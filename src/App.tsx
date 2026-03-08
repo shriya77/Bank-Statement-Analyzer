@@ -103,7 +103,7 @@ function MappingTable({
       ...prev,
       {
         id: crypto.randomUUID(),
-        type: 'room' as const,
+        type: 'shop' as const,
         identifier: '',
         customerName: '',
       },
@@ -148,11 +148,9 @@ function MappingTable({
 
   return (
     <section className="mapping-section">
-      <h2>Room / Shop → Customer mapping</h2>
+      <h2>Shop → Customer mapping</h2>
       <p className="mapping-hint">
-        Add rows to map room numbers or shop names (as they appear in the
-        statement) to customer names. The report will group transactions by
-        these.
+        Auto-populate finds shop identifiers from the statement (e.g. 123DENTISTRYEMERALD, BRIYANIPALAYAM). Add customer names. Report groups by shop, then by person/account.
       </p>
       {transactions.length > 0 && (
         <button
@@ -160,7 +158,7 @@ function MappingTable({
           className="btn-secondary"
           onClick={autoPopulate}
         >
-          Auto-populate from statement
+          Auto-populate shops from statement
         </button>
       )}
       <div className="table-wrap">
@@ -196,7 +194,7 @@ function MappingTable({
                     onChange={(e) =>
                       updateRow(row.id, { identifier: e.target.value.trim() })
                     }
-                    placeholder="e.g. 406, 308, BRIYANIPALAYAM"
+                    placeholder="e.g. 123DENTISTRYEMERALD, BRIYANIPALAYAM"
                   />
                 </td>
                 <td>
@@ -257,8 +255,8 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        By room no / shop no, then customer name. Plus Amma, Mutual funds, and
-        by client.
+        Shops (strict match), Mother (Padmavathi), Mutual funds, then all other
+        transactions grouped by person/account.
       </p>
       <div className="report-groups">
         {roomShopFirst.map((group, idx) => (
