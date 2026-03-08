@@ -3,6 +3,65 @@ import type { RoomShopMapping } from './types'
 
 const lower = (s: string) => s.toLowerCase()
 
+export interface ExtractedRoomShop {
+  type: 'room' | 'shop'
+  identifier: string
+}
+
+/** Extract room and shop identifiers from transaction narrations for auto-populating the mapping. */
+export function extractRoomShopFromTransactions(
+  transactions: Transaction[]
+): ExtractedRoomShop[] {
+  const seen = new Map<string, ExtractedRoomShop>()
+  const add = (type: 'room' | 'shop', id: string) => {
+    const key = `${type}:${id.toLowerCase().trim()}`
+    if (key.length < 2) return
+    if (!seen.has(key)) seen.set(key, { type, identifier: id.trim() })
+  }
+
+  for (const t of transactions) {
+    const d = t.description
+    const dLower = lower(d)
+
+    // Room: "ROOM NO 2", "ROOM NO. 2", "MARCH 25 ROOM NO 2"
+    const roomNoMatch = d.match(/\bROOM\s+NO\.?\s*(\d+)\b/i)
+    if (roomNoMatch) add('room', roomNoMatch[1])
+
+    // Room: "ROOM 406", "ROOM 308"
+    const roomNumMatch = d.match(/\bROOM\s+(\d{2,4})\b/i)
+    if (roomNumMatch) add('room', roomNumMatch[1])
+
+    // Room: "206 ADVANCE RETURN", "308 ADVANCE" (number before ADVANCE)
+    const advanceMatch = d.match(/\b(\d{2,4})\s+ADVANCE\b/i)
+    if (advanceMatch) add('room', advanceMatch[1])
+
+    // Shop: "MAINTENANCE SHOP BRIYANIPALAYAM", "SHOP BRIYANIPALAYAM"
+    const shopBeforeMatch = d.match(/(?:MAINTENANCE\s+)?SHOP\s+([A-Za-z]+)/gi)
+    if (shopBeforeMatch) {
+      for (const m of shopBeforeMatch) {
+        const cap = m.match(/SHOP\s+([A-Za-z]+)/i)
+        if (cap && cap[1].length > 2) add('shop', cap[1])
+      }
+    }
+
+    // Shop: "BRIYANIPALAYAM SHOP", "BRIYANIPALAYAM SHOP REPAIRS"
+    const shopAfterMatch = d.match(/\b([A-Za-z]{4,})\s+SHOP(?:\s+(?:REPAIRS|MAINTENANCE|SHUTTER))?\b/gi)
+    if (shopAfterMatch) {
+      for (const m of shopAfterMatch) {
+        const cap = m.match(/^([A-Za-z]+)\s+SHOP/i)
+        if (cap && cap[1].length > 2) add('shop', cap[1])
+      }
+    }
+  }
+
+  const result = Array.from(seen.values())
+  result.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'room' ? -1 : 1
+    return a.identifier.localeCompare(b.identifier)
+  })
+  return result
+}
+
 /** Money to/from mother — identified by her name Padmavathi only (not MUM or Amma) */
 export function isMoneyToMother(description: string): boolean {
   const d = lower(description)

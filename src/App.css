@@ -321,6 +321,20 @@
   background: var(--accent-dim);
 }
 
+.btn-secondary {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 1rem;
+}
+
+.btn-secondary:hover {
+  background: var(--surface-hover);
+}
+
 .btn-ghost {
   padding: 0.35rem 0.6rem;
   border: none;

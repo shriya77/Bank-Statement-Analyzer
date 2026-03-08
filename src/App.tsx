@@ -7,7 +7,7 @@ import {
   saveMappingToStorage,
   CATEGORY_COLORS,
 } from './types'
-import { buildReport } from './reportLogic'
+import { buildReport, extractRoomShopFromTransactions } from './reportLogic'
 import './App.css'
 
 function formatAmount(amount: number): string {
@@ -92,9 +92,11 @@ type TabId = 'upload' | 'mapping' | 'report'
 function MappingTable({
   mapping,
   setMapping,
+  transactions,
 }: {
   mapping: RoomShopMapping[]
   setMapping: React.Dispatch<React.SetStateAction<RoomShopMapping[]>>
+  transactions: Transaction[]
 }) {
   const addRow = useCallback(() => {
     setMapping((prev) => [
@@ -107,6 +109,27 @@ function MappingTable({
       },
     ])
   }, [setMapping])
+
+  const autoPopulate = useCallback(() => {
+    const extracted = extractRoomShopFromTransactions(transactions)
+    const existingKeys = new Set(
+      mapping.map((m) => `${m.type}:${m.identifier.toLowerCase().trim()}`)
+    )
+    const toAdd = extracted.filter(
+      (e) => !existingKeys.has(`${e.type}:${e.identifier.toLowerCase().trim()}`)
+    )
+    if (toAdd.length === 0) return
+    setMapping((prev) => [
+      ...prev,
+      ...toAdd.map((e) => ({
+        id: crypto.randomUUID(),
+        type: e.type,
+        identifier: e.identifier,
+        customerName: '',
+      })),
+    ])
+  }, [transactions, mapping, setMapping])
+
   const updateRow = useCallback(
     (id: string, patch: Partial<RoomShopMapping>) => {
       setMapping((prev) =>
@@ -131,6 +154,15 @@ function MappingTable({
         statement) to customer names. The report will group transactions by
         these.
       </p>
+      {transactions.length > 0 && (
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={autoPopulate}
+        >
+          Auto-populate from statement
+        </button>
+      )}
       <div className="table-wrap">
         <table className="mapping-table">
           <thead>
@@ -283,6 +315,30 @@ export default function App() {
     loadMappingFromStorage()
   )
 
+  // Auto-populate room/shop mapping from statement when CSV is loaded
+  useEffect(() => {
+    if (transactions.length === 0) return
+    const extracted = extractRoomShopFromTransactions(transactions)
+    setMapping((prev) => {
+      const existingKeys = new Set(
+        prev.map((m) => `${m.type}:${m.identifier.toLowerCase().trim()}`)
+      )
+      const toAdd = extracted.filter(
+        (e) => !existingKeys.has(`${e.type}:${e.identifier.toLowerCase().trim()}`)
+      )
+      if (toAdd.length === 0) return prev
+      return [
+        ...prev,
+        ...toAdd.map((e) => ({
+          id: crypto.randomUUID(),
+          type: e.type,
+          identifier: e.identifier,
+          customerName: '',
+        })),
+      ]
+    })
+  }, [transactions])
+
   const handleFile = useCallback(async (file: File) => {
     setError(null)
     try {
@@ -428,7 +484,11 @@ export default function App() {
       )}
 
       {tab === 'mapping' && (
-        <MappingTable mapping={mapping} setMapping={setMapping} />
+        <MappingTable
+          mapping={mapping}
+          setMapping={setMapping}
+          transactions={transactions}
+        />
       )}
 
       {tab === 'report' && transactions.length > 0 && (
