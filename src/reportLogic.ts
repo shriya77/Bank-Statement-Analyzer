@@ -79,39 +79,46 @@ export function isMutualFund(description: string): boolean {
   )
 }
 
-/**
- * Match narration to a SHOP mapping only by strict identifier.
- * - No loose digit matching (so "2" never matches every line with 2 in it).
- * - Shop: identifier must appear as whole word or in "SHOP <id>" / "<id> SHOP".
- */
+/** Returns true if description matches this mapping row (by type and identifier). */
+export function matchMappingRow(description: string, row: RoomShopMapping): boolean {
+  const d = lower(description)
+  const id = lower(row.identifier).trim()
+  if (!id) return false
+  const asWord = id.replace(/\s+/g, ' ')
+  switch (row.type) {
+    case 'room':
+      if (d.includes(`room no ${asWord}`) || d.includes(`room no. ${asWord}`)) return true
+      if (d.includes(`room ${asWord}`) && /^\d{2,4}$/.test(id.replace(/\s/g, ''))) return true
+      const numPart = id.replace(/\D/g, '')
+      if (numPart.length >= 2 && new RegExp(`\\b${numPart}\\s+advance\\b`).test(d)) return true
+      return false
+    case 'shop':
+      if (d.includes(asWord)) return true
+      if (d.includes(`shop ${asWord}`) || d.includes(`${asWord} shop`)) return true
+      try {
+        const wb = new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+        if (wb.test(d)) return true
+      } catch {}
+      if (
+        (id.includes('briyan') || id.includes('biryan')) &&
+        (d.includes('srs foods') || d.includes('s r s foods') || d.includes('shabana parvin r'))
+      ) return true
+      return false
+    case 'home':
+    case 'amma':
+    case 'maintenance':
+      return d.includes(asWord)
+    default:
+      return d.includes(asWord)
+  }
+}
+
+/** Match narration to a SHOP mapping only (for backward compat / auto-populate). */
 export function matchRoomShop(
   description: string,
   mapping: RoomShopMapping[]
 ): RoomShopMapping | null {
-  const d = lower(description)
-  for (const m of mapping) {
-    const id = lower(m.identifier).trim()
-    if (!id) continue
-    if (m.type === 'shop') {
-      const asWord = id.replace(/\s+/g, ' ')
-      if (d.includes(asWord)) return m
-      if (d.includes(`shop ${asWord}`) || d.includes(`${asWord} shop`)) return m
-      const wordBoundary = new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-      if (wordBoundary.test(d)) return m
-      // Special aliasing: treat SRS FOODS / SHABANA PARVIN R as BRIYANIPALAYAM shop
-      if (
-        (id.includes('briyan') || id.includes('biryan')) &&
-        (d.includes('srs foods') || d.includes('s r s foods') || d.includes('shabana parvin r'))
-      ) {
-        return m
-      }
-    }
-    if (m.type === 'home') {
-      const asWord = id.replace(/\s+/g, ' ')
-      if (d.includes(asWord)) return m
-    }
-  }
-  return null
+  return mapping.find((m) => m.type === 'shop' && matchMappingRow(description, m)) ?? null
 }
 
 /**
@@ -152,7 +159,7 @@ export function getPersonAccountLabel(description: string): string {
 }
 
 export interface ReportGroup {
-  type: 'amma' | 'mutual_funds' | 'home' | 'room_shop' | 'by_client'
+  type: 'amma' | 'mutual_funds' | 'home' | 'room_shop' | 'room' | 'maintenance' | 'by_client' | (string & {})
   label: string
   customerName?: string
   roomShopIdentifier?: string
@@ -161,14 +168,48 @@ export interface ReportGroup {
   total: number
 }
 
+const TYPE_ORDER = ['room', 'shop', 'home', 'amma', 'maintenance']
+
 export function buildReport(
   transactions: Transaction[],
   mapping: RoomShopMapping[]
 ): ReportGroup[] {
   const groups: ReportGroup[] = []
+  const assignedIds = new Set<string>()
 
-  const motherTx = transactions.filter((t) => isMoneyToMother(t.description))
+  // 1. Groups from mapping rows (each row = one group), sorted by type order
+  const sortedMapping = [...mapping].sort((a, b) => {
+    const ai = TYPE_ORDER.indexOf(a.type as (typeof TYPE_ORDER)[number])
+    const bi = TYPE_ORDER.indexOf(b.type as (typeof TYPE_ORDER)[number])
+    if (ai !== -1 && bi !== -1) return ai - bi
+    if (ai !== -1) return -1
+    if (bi !== -1) return 1
+    return String(a.type).localeCompare(String(b.type))
+  })
+  for (const row of sortedMapping) {
+    const id = lower(row.identifier).trim()
+    if (!id) continue
+    const tx = transactions.filter((t) => !assignedIds.has(t.id) && matchMappingRow(t.description, row))
+    if (tx.length === 0) continue
+    for (const t of tx) assignedIds.add(t.id)
+    const total = tx.reduce((s, t) => s + t.amount, 0)
+    const label = row.customerName?.trim() || row.identifier
+    const reportType = row.type === 'shop' ? 'room_shop' : row.type
+    groups.push({
+      type: reportType as ReportGroup['type'],
+      label: row.type === 'shop' ? row.identifier : label,
+      customerName: row.customerName?.trim() ? row.customerName : undefined,
+      roomShopIdentifier: row.identifier,
+      roomShopType: row.type === 'room' ? 'room' : row.type === 'shop' ? 'shop' : row.type === 'home' ? 'home' : undefined,
+      transactions: tx,
+      total,
+    })
+  }
+
+  // 2. Built-in Amma (Padmavathi, excluding maintenance)
+  const motherTx = transactions.filter((t) => !assignedIds.has(t.id) && isMoneyToMother(t.description))
   if (motherTx.length > 0) {
+    for (const t of motherTx) assignedIds.add(t.id)
     groups.push({
       type: 'amma',
       label: 'Money to/from Mother (Padmavathi)',
@@ -177,8 +218,10 @@ export function buildReport(
     })
   }
 
-  const mfTx = transactions.filter((t) => isMutualFund(t.description))
+  // 3. Mutual funds
+  const mfTx = transactions.filter((t) => !assignedIds.has(t.id) && isMutualFund(t.description))
   if (mfTx.length > 0) {
+    for (const t of mfTx) assignedIds.add(t.id)
     groups.push({
       type: 'mutual_funds',
       label: 'Mutual Funds',
@@ -187,40 +230,14 @@ export function buildReport(
     })
   }
 
-  // Only shop mappings (no room) — strict match + explicit aliases
-  const shopMapping = mapping.filter((m) => m.type === 'shop')
-  const byRoomShop: Record<string, { mapping: RoomShopMapping; tx: Transaction[] }> = {}
-  const assignedIds = new Set<string>()
-  for (const t of transactions) {
-    const m = matchRoomShop(t.description, shopMapping)
-    if (m) {
-      const key = m.id
-      if (!byRoomShop[key]) byRoomShop[key] = { mapping: m, tx: [] }
-      byRoomShop[key].tx.push(t)
-      assignedIds.add(t.id)
-    }
-  }
-  for (const entry of Object.values(byRoomShop)) {
-    const total = entry.tx.reduce((s, t) => s + t.amount, 0)
-    groups.push({
-      type: 'room_shop',
-      label: entry.mapping.identifier,
-      customerName: entry.mapping.customerName,
-      roomShopIdentifier: entry.mapping.identifier,
-      roomShopType: 'shop',
-      transactions: entry.tx,
-      total,
-    })
-  }
-
-  // Home / house group: specific people/accounts that should be treated as \"home\"
+  // 4. Built-in Home (Neha Mittal, Nealabh Bhatia)
   const homeTx = transactions.filter((t) => {
+    if (assignedIds.has(t.id)) return false
     const d = lower(t.description)
     return d.includes('neha mittal') || d.includes('nealabh bhatia')
   })
-  const homeAssigned = new Set<string>()
   if (homeTx.length > 0) {
-    for (const t of homeTx) assignedIds.add(t.id), homeAssigned.add(t.id)
+    for (const t of homeTx) assignedIds.add(t.id)
     groups.push({
       type: 'home',
       label: 'Home',
@@ -231,7 +248,7 @@ export function buildReport(
     })
   }
 
-  // Non-shop transactions grouped by same person/account (stable key)
+  // 5. By person/account (rest)
   const byClient: Record<string, { tx: Transaction[]; label: string }> = {}
   for (const t of transactions) {
     if (assignedIds.has(t.id)) continue

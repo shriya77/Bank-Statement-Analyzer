@@ -5,6 +5,9 @@ import type { RoomShopMapping } from './types'
 import {
   loadMappingFromStorage,
   saveMappingToStorage,
+  loadCustomTypesFromStorage,
+  saveCustomTypesToStorage,
+  BUILTIN_MAPPING_TYPES,
   CATEGORY_COLORS,
 } from './types'
 import { buildReport, extractRoomShopFromTransactions } from './reportLogic'
@@ -98,6 +101,13 @@ function MappingTable({
   setMapping: React.Dispatch<React.SetStateAction<RoomShopMapping[]>>
   transactions: Transaction[]
 }) {
+  const [customTypes, setCustomTypes] = useState<string[]>(() => loadCustomTypesFromStorage())
+  const [newCustomType, setNewCustomType] = useState('')
+
+  useEffect(() => {
+    saveCustomTypesToStorage(customTypes)
+  }, [customTypes])
+
   const addRow = useCallback(() => {
     setMapping((prev) => [
       ...prev,
@@ -109,6 +119,13 @@ function MappingTable({
       },
     ])
   }, [setMapping])
+
+  const addCustomType = useCallback(() => {
+    const v = newCustomType.trim().toLowerCase()
+    if (!v || customTypes.includes(v)) return
+    setCustomTypes((prev) => [...prev, v])
+    setNewCustomType('')
+  }, [newCustomType, customTypes])
 
   const autoPopulate = useCallback(() => {
     const extracted = extractRoomShopFromTransactions(transactions)
@@ -148,9 +165,9 @@ function MappingTable({
 
   return (
     <section className="mapping-section">
-      <h2>Shop → Customer mapping</h2>
+      <h2>Mapping (Room / Shop / Home / Amma / Maintenance)</h2>
       <p className="mapping-hint">
-        Auto-populate finds shop identifiers from the statement (e.g. 123DENTISTRYEMERALD, BRIYANIPALAYAM). Add customer names. Report groups by shop, then by person/account.
+        Choose type, set identifier (as it appears in the statement), and optional customer name. Auto-populate adds shops from the CSV. Add custom types below if needed.
       </p>
       {transactions.length > 0 && (
         <button
@@ -183,8 +200,16 @@ function MappingTable({
                       })
                     }
                   >
-                    <option value="shop">Shop</option>
-                    <option value="home">Home</option>
+                    {BUILTIN_MAPPING_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                      </option>
+                    ))}
+                    {customTypes.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
                   </select>
                 </td>
                 <td>
@@ -222,9 +247,24 @@ function MappingTable({
           </tbody>
         </table>
       </div>
-      <button type="button" className="btn-primary" onClick={addRow}>
-        + Add Room / Shop
-      </button>
+      <div className="mapping-actions">
+        <button type="button" className="btn-primary" onClick={addRow}>
+          + Add row
+        </button>
+        <div className="add-custom-type">
+          <input
+            type="text"
+            value={newCustomType}
+            onChange={(e) => setNewCustomType(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addCustomType()}
+            placeholder="Custom type name"
+            className="custom-type-input"
+          />
+          <button type="button" className="btn-secondary" onClick={addCustomType}>
+            Add custom type
+          </button>
+        </div>
+      </div>
     </section>
   )
 }
@@ -237,25 +277,11 @@ function ReportView({
   mapping: RoomShopMapping[]
 }) {
   const groups = buildReport(transactions, mapping)
-  const roomShopGroups = groups
-    .filter((g) => g.type === 'room_shop')
-    .sort((a, b) => {
-      if (a.roomShopType !== b.roomShopType)
-        return (a.roomShopType === 'room' ? 0 : 1) - (b.roomShopType === 'room' ? 0 : 1)
-      return (a.roomShopIdentifier ?? '').localeCompare(b.roomShopIdentifier ?? '')
-    })
-  const homeGroups = groups.filter((g) => g.type === 'home')
-  const roomShopFirst = [
-    ...roomShopGroups,
-    ...homeGroups,
-    ...groups.filter((g) => g.type === 'amma'),
-    ...groups.filter((g) => g.type === 'mutual_funds'),
-    ...groups.filter((g) => g.type === 'by_client'),
-  ]
+  const displayGroups = groups
 
   const downloadReport = useCallback(() => {
     const rows: string[][] = [['Client', 'Credit', 'Debit']]
-    for (const g of roomShopFirst) {
+    for (const g of displayGroups) {
       const credit = g.transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0)
       const debit = g.transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
       const label = g.customerName?.trim() ? `${g.label} (${g.customerName})` : g.label
@@ -273,7 +299,7 @@ function ReportView({
     a.download = `report-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }, [roomShopFirst])
+  }, [displayGroups])
 
   return (
     <section className="report-section">
@@ -286,11 +312,11 @@ function ReportView({
         Download report (CSV)
       </button>
       <div className="report-groups">
-        {roomShopFirst.map((group, idx) => (
+        {displayGroups.map((group, idx) => (
           <div key={`${group.type}-${group.label}-${idx}`} className="report-group">
             <div className="report-group-header">
               <span className="report-group-title">{group.label}</span>
-              {group.customerName != null && group.type === 'room_shop' && (
+              {group.customerName != null && (
                 <span className="report-group-customer">{group.customerName}</span>
               )}
               <span

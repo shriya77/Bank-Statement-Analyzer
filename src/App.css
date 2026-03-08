@@ -308,8 +308,32 @@
   color: var(--text);
 }
 
-.mapping-section .btn-primary {
+.mapping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
   margin-top: 1rem;
+}
+
+.add-custom-type {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.custom-type-input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--text);
+  font-size: 0.9rem;
+  min-width: 140px;
+}
+
+.mapping-section .btn-primary {
+  margin-top: 0;
 }
 
 .btn-primary {

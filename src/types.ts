@@ -22,7 +22,7 @@ export interface Transaction {
   raw: Record<string, string>
 }
 
-export type RoomOrShopType = 'room' | 'shop' | 'home'
+export type RoomOrShopType = 'room' | 'shop' | 'home' | 'amma' | 'maintenance' | (string & {})
 
 export interface RoomShopMapping {
   id: string
@@ -50,6 +50,7 @@ export const CATEGORY_COLORS: Record<Category, string> = {
 }
 
 const MAPPING_STORAGE_KEY = 'bank-statement-room-shop-mapping'
+const CUSTOM_TYPES_STORAGE_KEY = 'bank-statement-custom-types'
 
 export function loadMappingFromStorage(): RoomShopMapping[] {
   try {
@@ -65,3 +66,20 @@ export function loadMappingFromStorage(): RoomShopMapping[] {
 export function saveMappingToStorage(mapping: RoomShopMapping[]) {
   localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(mapping))
 }
+
+export function loadCustomTypesFromStorage(): string[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_TYPES_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+export function saveCustomTypesToStorage(custom: string[]) {
+  localStorage.setItem(CUSTOM_TYPES_STORAGE_KEY, JSON.stringify(custom))
+}
+
+export const BUILTIN_MAPPING_TYPES = ['room', 'shop', 'home', 'amma', 'maintenance'] as const
