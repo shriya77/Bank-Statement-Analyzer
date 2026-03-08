@@ -166,7 +166,7 @@ function MappingTable({
           <thead>
             <tr>
               <th>Type</th>
-              <th>Room no / Shop identifier</th>
+              <th>Identifier</th>
               <th>Customer name</th>
               <th></th>
             </tr>
@@ -183,8 +183,8 @@ function MappingTable({
                       })
                     }
                   >
-                    <option value="room">Room</option>
                     <option value="shop">Shop</option>
+                    <option value="home">Home</option>
                   </select>
                 </td>
                 <td>
@@ -194,7 +194,7 @@ function MappingTable({
                     onChange={(e) =>
                       updateRow(row.id, { identifier: e.target.value.trim() })
                     }
-                    placeholder="e.g. 123DENTISTRYEMERALD, BRIYANIPALAYAM"
+                    placeholder="e.g. 123DENTISTRYEMERALD, BRIYANIPALAYAM, NEHA MITTAL"
                   />
                 </td>
                 <td>
@@ -244,8 +244,10 @@ function ReportView({
         return (a.roomShopType === 'room' ? 0 : 1) - (b.roomShopType === 'room' ? 0 : 1)
       return (a.roomShopIdentifier ?? '').localeCompare(b.roomShopIdentifier ?? '')
     })
+  const homeGroups = groups.filter((g) => g.type === 'home')
   const roomShopFirst = [
     ...roomShopGroups,
+    ...homeGroups,
     ...groups.filter((g) => g.type === 'amma'),
     ...groups.filter((g) => g.type === 'mutual_funds'),
     ...groups.filter((g) => g.type === 'by_client'),
@@ -393,7 +395,7 @@ export default function App() {
       <header className="header">
         <h1>Bank Statement Analyzer</h1>
         <p className="tagline">
-          Upload CSV → map room/shop to customers → see summary by customer &
+          Upload CSV → map shops/home to customers → see summary by customer,
           Amma, mutual funds.
         </p>
       </header>

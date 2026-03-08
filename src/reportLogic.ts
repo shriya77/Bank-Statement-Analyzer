@@ -60,9 +60,10 @@ export function extractRoomShopFromTransactions(
   )
 }
 
-/** Money to/from mother — identified by her name Padmavathi only */
+/** Money to/from mother — identified by her name Padmavathi only (excluding maintenance lines) */
 export function isMoneyToMother(description: string): boolean {
-  return lower(description).includes('padmavathi')
+  const d = lower(description)
+  return d.includes('padmavathi') && !d.includes('maintenance')
 }
 
 export function isMutualFund(description: string): boolean {
@@ -97,6 +98,17 @@ export function matchRoomShop(
       if (d.includes(`shop ${asWord}`) || d.includes(`${asWord} shop`)) return m
       const wordBoundary = new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
       if (wordBoundary.test(d)) return m
+      // Special aliasing: treat SRS FOODS / SHABANA PARVIN R as BRIYANIPALAYAM shop
+      if (
+        (id.includes('briyan') || id.includes('biryan')) &&
+        (d.includes('srs foods') || d.includes('s r s foods') || d.includes('shabana parvin r'))
+      ) {
+        return m
+      }
+    }
+    if (m.type === 'home') {
+      const asWord = id.replace(/\s+/g, ' ')
+      if (d.includes(asWord)) return m
     }
   }
   return null
@@ -140,11 +152,11 @@ export function getPersonAccountLabel(description: string): string {
 }
 
 export interface ReportGroup {
-  type: 'amma' | 'mutual_funds' | 'room_shop' | 'by_client'
+  type: 'amma' | 'mutual_funds' | 'home' | 'room_shop' | 'by_client'
   label: string
   customerName?: string
   roomShopIdentifier?: string
-  roomShopType?: 'room' | 'shop'
+  roomShopType?: 'room' | 'shop' | 'home'
   transactions: Transaction[]
   total: number
 }
@@ -175,7 +187,7 @@ export function buildReport(
     })
   }
 
-  // Only shop mappings (no room) — strict match only
+  // Only shop mappings (no room) — strict match + explicit aliases
   const shopMapping = mapping.filter((m) => m.type === 'shop')
   const byRoomShop: Record<string, { mapping: RoomShopMapping; tx: Transaction[] }> = {}
   const assignedIds = new Set<string>()
@@ -198,6 +210,24 @@ export function buildReport(
       roomShopType: 'shop',
       transactions: entry.tx,
       total,
+    })
+  }
+
+  // Home / house group: specific people/accounts that should be treated as \"home\"
+  const homeTx = transactions.filter((t) => {
+    const d = lower(t.description)
+    return d.includes('neha mittal') || d.includes('nealabh bhatia')
+  })
+  const homeAssigned = new Set<string>()
+  if (homeTx.length > 0) {
+    for (const t of homeTx) assignedIds.add(t.id), homeAssigned.add(t.id)
+    groups.push({
+      type: 'home',
+      label: 'Home',
+      customerName: 'Home',
+      roomShopType: 'home',
+      transactions: homeTx,
+      total: homeTx.reduce((s, t) => s + t.amount, 0),
     })
   }
 

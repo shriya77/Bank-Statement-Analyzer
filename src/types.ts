@@ -22,7 +22,7 @@ export interface Transaction {
   raw: Record<string, string>
 }
 
-export type RoomOrShopType = 'room' | 'shop'
+export type RoomOrShopType = 'room' | 'shop' | 'home'
 
 export interface RoomShopMapping {
   id: string
