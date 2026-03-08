@@ -251,6 +251,28 @@ function ReportView({
     ...groups.filter((g) => g.type === 'by_client'),
   ]
 
+  const downloadReport = useCallback(() => {
+    const rows: string[][] = [['Client', 'Credit', 'Debit']]
+    for (const g of roomShopFirst) {
+      const credit = g.transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0)
+      const debit = g.transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
+      const label = g.customerName?.trim() ? `${g.label} (${g.customerName})` : g.label
+      rows.push([
+        label,
+        credit.toFixed(2),
+        debit.toFixed(2),
+      ])
+    }
+    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `report-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [roomShopFirst])
+
   return (
     <section className="report-section">
       <h2>Summary report</h2>
@@ -258,6 +280,9 @@ function ReportView({
         Shops (strict match), Mother (Padmavathi), Mutual funds, then all other
         transactions grouped by person/account.
       </p>
+      <button type="button" className="btn-primary download-report-btn" onClick={downloadReport}>
+        Download report (CSV)
+      </button>
       <div className="report-groups">
         {roomShopFirst.map((group, idx) => (
           <div key={`${group.type}-${group.label}-${idx}`} className="report-group">

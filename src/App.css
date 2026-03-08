@@ -267,6 +267,10 @@
   margin: 0 0 0.5rem;
 }
 
+.download-report-btn {
+  margin-bottom: 1rem;
+}
+
 .mapping-hint,
 .report-hint {
   color: var(--text-muted);

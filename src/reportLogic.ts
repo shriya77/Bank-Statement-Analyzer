@@ -192,7 +192,7 @@ export function buildReport(
     const total = entry.tx.reduce((s, t) => s + t.amount, 0)
     groups.push({
       type: 'room_shop',
-      label: `Shop ${entry.mapping.identifier}`,
+      label: entry.mapping.identifier,
       customerName: entry.mapping.customerName,
       roomShopIdentifier: entry.mapping.identifier,
       roomShopType: 'shop',
