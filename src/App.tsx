@@ -1,16 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
-import { parseBankCsv } from './parseCsv'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { isStatementFile, parseBankFile } from './parseCsv'
 import type { Transaction } from './types'
 import type { RoomShopMapping } from './types'
 import {
   loadMappingFromStorage,
   saveMappingToStorage,
-  loadCustomTypesFromStorage,
-  saveCustomTypesToStorage,
   BUILTIN_MAPPING_TYPES,
   CATEGORY_COLORS,
 } from './types'
-import { buildReport, extractRoomShopFromTransactions } from './reportLogic'
+import { buildReport, extractRoomShopFromTransactions, type ReportGroup } from './reportLogic'
 import './App.css'
 
 function formatAmount(amount: number): string {
@@ -48,7 +46,7 @@ function UploadZone({
       e.preventDefault()
       onDragState(false)
       const file = e.dataTransfer.files[0]
-      if (file?.name.toLowerCase().endsWith('.csv')) onFile(file)
+      if (file && isStatementFile(file)) onFile(file)
     },
     [onFile, onDragState]
   )
@@ -77,14 +75,14 @@ function UploadZone({
     >
       <input
         type="file"
-        accept=".csv"
+        accept=".csv,.xls,.xlsx"
         onChange={handleInput}
-        id="csv-upload"
+        id="statement-upload"
         className="upload-input"
       />
-      <label htmlFor="csv-upload" className="upload-label">
+      <label htmlFor="statement-upload" className="upload-label">
         <span className="upload-icon">📄</span>
-        <span>Drop your bank statement CSV here or click to browse</span>
+        <span>Drop bank statement (CSV or Excel .xls / .xlsx) or click to browse</span>
       </label>
     </div>
   )
@@ -101,13 +99,6 @@ function MappingTable({
   setMapping: React.Dispatch<React.SetStateAction<RoomShopMapping[]>>
   transactions: Transaction[]
 }) {
-  const [customTypes, setCustomTypes] = useState<string[]>(() => loadCustomTypesFromStorage())
-  const [newCustomType, setNewCustomType] = useState('')
-
-  useEffect(() => {
-    saveCustomTypesToStorage(customTypes)
-  }, [customTypes])
-
   const addRow = useCallback(() => {
     setMapping((prev) => [
       ...prev,
@@ -119,13 +110,6 @@ function MappingTable({
       },
     ])
   }, [setMapping])
-
-  const addCustomType = useCallback(() => {
-    const v = newCustomType.trim().toLowerCase()
-    if (!v || customTypes.includes(v)) return
-    setCustomTypes((prev) => [...prev, v])
-    setNewCustomType('')
-  }, [newCustomType, customTypes])
 
   const autoPopulate = useCallback(() => {
     const extracted = extractRoomShopFromTransactions(transactions)
@@ -165,9 +149,9 @@ function MappingTable({
 
   return (
     <section className="mapping-section">
-      <h2>Mapping (Room / Shop / Home / Amma / Maintenance)</h2>
+      <h2>Optional overrides (Shop / House / Room)</h2>
       <p className="mapping-hint">
-        Choose type, set identifier (as it appears in the statement), and optional customer name. Auto-populate adds shops from the CSV. Add custom types below if needed.
+        Most rows are classified automatically: <strong>Amma</strong> (Padmavathi), <strong>Shops</strong>, <strong>House</strong> (Neha Mittal, Nealabh Bhatia), and everything else as <strong>Rooms</strong> (by tenant/person). Use this table only to tweak shop or house identifiers.
       </p>
       {transactions.length > 0 && (
         <button
@@ -203,11 +187,6 @@ function MappingTable({
                     {BUILTIN_MAPPING_TYPES.map((t) => (
                       <option key={t} value={t}>
                         {t.charAt(0).toUpperCase() + t.slice(1)}
-                      </option>
-                    ))}
-                    {customTypes.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
                       </option>
                     ))}
                   </select>
@@ -247,24 +226,9 @@ function MappingTable({
           </tbody>
         </table>
       </div>
-      <div className="mapping-actions">
-        <button type="button" className="btn-primary" onClick={addRow}>
-          + Add row
-        </button>
-        <div className="add-custom-type">
-          <input
-            type="text"
-            value={newCustomType}
-            onChange={(e) => setNewCustomType(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addCustomType()}
-            placeholder="Custom type name"
-            className="custom-type-input"
-          />
-          <button type="button" className="btn-secondary" onClick={addCustomType}>
-            Add custom type
-          </button>
-        </div>
-      </div>
+      <button type="button" className="btn-primary mapping-add-row" onClick={addRow}>
+        + Add override row
+      </button>
     </section>
   )
 }
@@ -279,14 +243,36 @@ function ReportView({
   const groups = buildReport(transactions, mapping)
   const displayGroups = groups
 
+  const categorySummary = useMemo(() => {
+    const defs: { type: ReportGroup['type']; label: string; color: string }[] = [
+      { type: 'amma', label: 'Amma', color: CATEGORY_COLORS.Amma },
+      { type: 'shop', label: 'Shops', color: CATEGORY_COLORS.Shop },
+      { type: 'house', label: 'House', color: CATEGORY_COLORS.House },
+      { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
+    ]
+    return defs.map(({ type, label, color }) => {
+      const matching = displayGroups.filter((g) => g.type === type)
+      let credit = 0
+      let debit = 0
+      let net = 0
+      for (const g of matching) {
+        for (const t of g.transactions) {
+          if (t.amount > 0) credit += t.amount
+          else debit += Math.abs(t.amount)
+          net += t.amount
+        }
+      }
+      return { type, label, color, credit, debit, net }
+    })
+  }, [displayGroups])
+
   const downloadReport = useCallback(() => {
     const rows: string[][] = [['Client', 'Credit', 'Debit']]
     for (const g of displayGroups) {
       const credit = g.transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0)
       const debit = g.transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
-      const label = g.customerName?.trim() ? `${g.label} (${g.customerName})` : g.label
       rows.push([
-        label,
+        g.label,
         credit.toFixed(2),
         debit.toFixed(2),
       ])
@@ -305,9 +291,35 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        Shops (strict match), Mother (Padmavathi), Mutual funds, then all other
-        transactions grouped by person/account.
+        <strong>Amma</strong> (Padmavathi) → then each <strong>Shop</strong> → <strong>House</strong> → each <strong>Room</strong> (tenant/person). Download CSV has Client, Credit, Debit per row.
       </p>
+      <div className="category-summary-grid">
+        {categorySummary.map((cat) => (
+          <div
+            key={cat.type}
+            className="category-summary-box"
+            style={{ '--cat-color': cat.color } as React.CSSProperties}
+          >
+            <span className="category-summary-label">{cat.label}</span>
+            <div className="category-summary-rows">
+              <div className="category-summary-row">
+                <span>Credit</span>
+                <span className="positive">{formatAmount(cat.credit)}</span>
+              </div>
+              <div className="category-summary-row">
+                <span>Debit</span>
+                <span className="negative">{formatAmount(-cat.debit)}</span>
+              </div>
+              <div className="category-summary-row net">
+                <span>Net</span>
+                <span className={cat.net >= 0 ? 'positive' : 'negative'}>
+                  {formatAmount(cat.net)}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
       <button type="button" className="btn-primary download-report-btn" onClick={downloadReport}>
         Download report (CSV)
       </button>
@@ -315,10 +327,13 @@ function ReportView({
         {displayGroups.map((group, idx) => (
           <div key={`${group.type}-${group.label}-${idx}`} className="report-group">
             <div className="report-group-header">
-              <span className="report-group-title">{group.label}</span>
-              {group.customerName != null && (
-                <span className="report-group-customer">{group.customerName}</span>
-              )}
+              <span className="report-group-title">
+                {group.type === 'amma' && 'Amma · '}
+                {group.type === 'shop' && 'Shop · '}
+                {group.type === 'house' && 'House · '}
+                {group.type === 'room' && 'Room · '}
+                {group.label}
+              </span>
               <span
                 className={`report-group-total ${group.total >= 0 ? 'positive' : 'negative'}`}
               >
@@ -393,12 +408,11 @@ export default function App() {
   const handleFile = useCallback(async (file: File) => {
     setError(null)
     try {
-      const text = await file.text()
-      const parsed = parseBankCsv(text)
+      const parsed = await parseBankFile(file)
       setTransactions(parsed)
       setSelectedCategory(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to parse CSV')
+      setError(e instanceof Error ? e.message : 'Failed to parse statement')
       setTransactions([])
     }
   }, [])
@@ -421,8 +435,7 @@ export default function App() {
       <header className="header">
         <h1>Bank Statement Analyzer</h1>
         <p className="tagline">
-          Upload CSV → map shops/home to customers → see summary by customer,
-          Amma, mutual funds.
+          Upload CSV or Excel (.xls/.xlsx) → Amma, Shops, House, and Rooms.
         </p>
       </header>
 

@@ -1,17 +1,4 @@
-export type Category =
-  | 'Food & Dining'
-  | 'Shopping'
-  | 'Transport'
-  | 'Bills & Utilities'
-  | 'Entertainment'
-  | 'Health'
-  | 'Travel'
-  | 'Transfers'
-  | 'Subscriptions'
-  | 'Income'
-  | 'Mutual Funds'
-  | 'Amma'
-  | 'Other'
+export type Category = 'Amma' | 'Shop' | 'House' | 'Room'
 
 export interface Transaction {
   id: string
@@ -22,7 +9,7 @@ export interface Transaction {
   raw: Record<string, string>
 }
 
-export type RoomOrShopType = 'room' | 'shop' | 'home' | 'amma' | 'maintenance' | (string & {})
+export type RoomOrShopType = 'shop' | 'house' | 'room'
 
 export interface RoomShopMapping {
   id: string
@@ -34,24 +21,13 @@ export interface RoomShopMapping {
 }
 
 export const CATEGORY_COLORS: Record<Category, string> = {
-  'Food & Dining': '#f59e0b',
-  'Shopping': '#8b5cf6',
-  'Transport': '#06b6d4',
-  'Bills & Utilities': '#3b82f6',
-  'Entertainment': '#ec4899',
-  'Health': '#10b981',
-  'Travel': '#6366f1',
-  'Transfers': '#64748b',
-  'Subscriptions': '#f97316',
-  'Income': '#22c55e',
-  'Mutual Funds': '#0ea5e9',
-  'Amma': '#a855f7',
-  'Other': '#6b7280',
+  Amma: '#a855f7',
+  Shop: '#f59e0b',
+  House: '#06b6d4',
+  Room: '#22c55e',
 }
 
 const MAPPING_STORAGE_KEY = 'bank-statement-room-shop-mapping'
-const CUSTOM_TYPES_STORAGE_KEY = 'bank-statement-custom-types'
-
 export function loadMappingFromStorage(): RoomShopMapping[] {
   try {
     const raw = localStorage.getItem(MAPPING_STORAGE_KEY)
@@ -67,19 +43,4 @@ export function saveMappingToStorage(mapping: RoomShopMapping[]) {
   localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(mapping))
 }
 
-export function loadCustomTypesFromStorage(): string[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_TYPES_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-export function saveCustomTypesToStorage(custom: string[]) {
-  localStorage.setItem(CUSTOM_TYPES_STORAGE_KEY, JSON.stringify(custom))
-}
-
-export const BUILTIN_MAPPING_TYPES = ['room', 'shop', 'home', 'amma', 'maintenance'] as const
+export const BUILTIN_MAPPING_TYPES = ['shop', 'house', 'room'] as const
