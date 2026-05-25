@@ -1,4 +1,4 @@
-export type Category = 'Amma' | 'Shop' | 'House' | 'Room'
+export type Category = 'Amma' | 'Shop' | 'House' | 'Indu' | 'Mutual Funds' | 'Room'
 
 export interface Transaction {
   id: string
@@ -24,6 +24,8 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   Amma: '#a855f7',
   Shop: '#f59e0b',
   House: '#06b6d4',
+  Indu: '#ec4899',
+  'Mutual Funds': '#0ea5e9',
   Room: '#22c55e',
 }
 

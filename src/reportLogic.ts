@@ -3,12 +3,26 @@ import type { RoomShopMapping } from './types'
 
 const lower = (s: string) => s.toLowerCase()
 
-export type Bucket = 'amma' | 'shop' | 'house' | 'room'
+export type Bucket = 'amma' | 'shop' | 'house' | 'indu' | 'mutual_funds' | 'room'
 
 /** Amma = Padmavathi only (not maintenance transfers) */
 export function isAmma(description: string): boolean {
   const d = lower(description)
   return d.includes('padmavathi') && !d.includes('maintenance')
+}
+
+/** Indu — avoid matching "NIPPON IND" in O-MF lines */
+export function isIndu(description: string): boolean {
+  const d = lower(description)
+  if (d.includes('o-mf')) return false
+  if (/nippon\s+ind[-\s]/.test(d)) return false
+  return /\bindu\b/.test(d) || d.includes('indu chandrasekar')
+}
+
+/** Mutual fund withdrawals (O-MF in narration) */
+export function isMutualFund(description: string): boolean {
+  const d = lower(description)
+  return d.includes('o-mf')
 }
 
 export function isHouse(description: string, mapping: RoomShopMapping[]): boolean {
@@ -23,7 +37,8 @@ export function isShop(description: string, mapping: RoomShopMapping[]): boolean
     if (m.type !== 'shop' || !m.identifier.trim()) continue
     if (matchShopIdentifier(d, lower(m.identifier))) return true
   }
-  if (d.includes(' shop ') || /\bshop\s+[a-z]/i.test(description)) return true
+  // Anything with "shop" in the narration belongs to Shops, including TEA SHOP and TEASHOP.
+  if (/\b[a-z0-9]*shop[a-z0-9]*\b/i.test(description)) return true
   if (/(?:MAINTENANCE\s+)?SHOP\s+[A-Za-z]+/i.test(description)) return true
   if (/\b[A-Za-z]{4,}\s+SHOP\b/i.test(description)) return true
   if (
@@ -81,6 +96,8 @@ export function classifyBucket(
   if (isAmma(description)) return 'amma'
   if (isShop(description, mapping)) return 'shop'
   if (isHouse(description, mapping)) return 'house'
+  if (isIndu(description)) return 'indu'
+  if (isMutualFund(description)) return 'mutual_funds'
   return 'room'
 }
 
@@ -89,6 +106,8 @@ export function getPersonAccountKey(description: string): string {
   if (!n) return 'other'
   const tptRent = n.match(/TPT-RENT-([^-]+(?:-[^-]+)*)$/i) || n.match(/TPT-[^-]+-([^-]+(?:-[^-]+)*)$/i)
   if (tptRent) return tptRent[1].replace(/\s+/g, ' ').trim().toLowerCase()
+  const upiName = n.match(/UPI-([^-@]+)-/)
+  if (upiName) return upiName[1].replace(/\s+/g, ' ').trim().toLowerCase()
   const upi = n.match(/UPI-([A-Za-z0-9\s.]+?)(?:-\d{10,}|@)/)
   if (upi) return upi[1].replace(/\s+/g, ' ').trim().toLowerCase()
   const imps = n.match(/IMPS-\d+-([A-Za-z0-9\s.]+?)(?:-[A-Z]+-|$)/)
@@ -110,7 +129,7 @@ export function getPersonAccountLabel(description: string): string {
 }
 
 export interface ReportGroup {
-  type: 'amma' | 'shop' | 'house' | 'room'
+  type: 'amma' | 'shop' | 'house' | 'indu' | 'mutual_funds' | 'room'
   label: string
   transactions: Transaction[]
   total: number
@@ -160,6 +179,28 @@ export function buildReport(
       label: 'House',
       transactions: houseTx,
       total: houseTx.reduce((s, t) => s + t.amount, 0),
+    })
+  }
+
+  const induTx = transactions.filter((t) => !assigned.has(t.id) && isIndu(t.description))
+  if (induTx.length > 0) {
+    induTx.forEach((t) => assigned.add(t.id))
+    groups.push({
+      type: 'indu',
+      label: 'Indu',
+      transactions: induTx,
+      total: induTx.reduce((s, t) => s + t.amount, 0),
+    })
+  }
+
+  const mfTx = transactions.filter((t) => !assigned.has(t.id) && isMutualFund(t.description))
+  if (mfTx.length > 0) {
+    mfTx.forEach((t) => assigned.add(t.id))
+    groups.push({
+      type: 'mutual_funds',
+      label: 'Mutual funds (O-MF)',
+      transactions: mfTx,
+      total: mfTx.reduce((s, t) => s + t.amount, 0),
     })
   }
 

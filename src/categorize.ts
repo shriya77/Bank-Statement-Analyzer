@@ -10,6 +10,10 @@ export function categorizeDescription(description: string): Category {
       return 'Shop'
     case 'house':
       return 'House'
+    case 'indu':
+      return 'Indu'
+    case 'mutual_funds':
+      return 'Mutual Funds'
     case 'room':
       return 'Room'
   }

@@ -151,7 +151,7 @@ function MappingTable({
     <section className="mapping-section">
       <h2>Optional overrides (Shop / House / Room)</h2>
       <p className="mapping-hint">
-        Most rows are classified automatically: <strong>Amma</strong> (Padmavathi), <strong>Shops</strong>, <strong>House</strong> (Neha Mittal, Nealabh Bhatia), and everything else as <strong>Rooms</strong> (by tenant/person). Use this table only to tweak shop or house identifiers.
+        Automatic split: <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Indu</strong>, <strong>Mutual funds (O-MF)</strong>, and <strong>Rooms</strong>. Use overrides only to tweak shop/house identifiers.
       </p>
       {transactions.length > 0 && (
         <button
@@ -248,6 +248,8 @@ function ReportView({
       { type: 'amma', label: 'Amma', color: CATEGORY_COLORS.Amma },
       { type: 'shop', label: 'Shops', color: CATEGORY_COLORS.Shop },
       { type: 'house', label: 'House', color: CATEGORY_COLORS.House },
+      { type: 'indu', label: 'Indu', color: CATEGORY_COLORS.Indu },
+      { type: 'mutual_funds', label: 'Mutual funds', color: CATEGORY_COLORS['Mutual Funds'] },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
     ]
     return defs.map(({ type, label, color }) => {
@@ -291,7 +293,7 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>Amma</strong> (Padmavathi) → then each <strong>Shop</strong> → <strong>House</strong> → each <strong>Room</strong> (tenant/person). Download CSV has Client, Credit, Debit per row.
+        <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Indu</strong>, <strong>Mutual funds (O-MF)</strong>, then <strong>Rooms</strong> (everyone else).
       </p>
       <div className="category-summary-grid">
         {categorySummary.map((cat) => (
@@ -331,6 +333,8 @@ function ReportView({
                 {group.type === 'amma' && 'Amma · '}
                 {group.type === 'shop' && 'Shop · '}
                 {group.type === 'house' && 'House · '}
+                {group.type === 'indu' && 'Indu · '}
+                {group.type === 'mutual_funds' && 'Mutual funds · '}
                 {group.type === 'room' && 'Room · '}
                 {group.label}
               </span>
@@ -434,9 +438,6 @@ export default function App() {
     <div className="app">
       <header className="header">
         <h1>Bank Statement Analyzer</h1>
-        <p className="tagline">
-          Upload CSV or Excel (.xls/.xlsx) → Amma, Shops, House, and Rooms.
-        </p>
       </header>
 
       <nav className="tabs">
