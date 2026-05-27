@@ -89,7 +89,7 @@ export function isMutualFund(description: string): boolean {
 /** Electricity board payments */
 export function isElectricityPayment(description: string): boolean {
   const d = lower(description)
-  return d.includes('techtangedco')
+  return d.includes('techtangedco') || d.includes('electricity')
 }
 
 /** Known room tenants that should always stay under Rooms. */
