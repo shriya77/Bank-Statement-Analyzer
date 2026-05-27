@@ -14,6 +14,7 @@ export type Category =
   | 'Income Tax'
   | 'Advertisement'
   | 'Telephone'
+  | 'Bank Charges'
   | 'Room'
 
 export interface Transaction {
@@ -52,6 +53,7 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   'Income Tax': '#60a5fa',
   Advertisement: '#f43f5e',
   Telephone: '#22d3ee',
+  'Bank Charges': '#64748b',
   Room: '#22c55e',
 }
 

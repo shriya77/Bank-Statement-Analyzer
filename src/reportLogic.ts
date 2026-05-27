@@ -73,6 +73,7 @@ export type Bucket =
   | 'income_tax'
   | 'advertisement'
   | 'telephone'
+  | 'bank_charges'
   | 'room'
 
 /** Amma = transactions mentioning Amma or Padmavathi (maintenance is handled first). */
@@ -178,6 +179,12 @@ export function isTelephone(description: string): boolean {
   return d.includes('payubhartiairtelimi') || d.includes('airtel')
 }
 
+/** Bank/depository charges */
+export function isBankCharges(description: string): boolean {
+  const d = lower(description)
+  return d.includes('depository charges')
+}
+
 /** Known room tenants that should always stay under Rooms. */
 export function isKnownRoomTenant(description: string): boolean {
   const d = lower(description)
@@ -276,6 +283,7 @@ export function classifyBucket(
   if (isIncomeTax(description)) return 'income_tax'
   if (isAdvertisement(description)) return 'advertisement'
   if (isTelephone(description)) return 'telephone'
+  if (isBankCharges(description)) return 'bank_charges'
   if (isOthers(description)) return 'others'
   if (isKnownRoomTenant(description)) return 'room'
   if (isShop(description, mapping)) return 'shop'
@@ -328,6 +336,7 @@ export interface ReportGroup {
     | 'income_tax'
     | 'advertisement'
     | 'telephone'
+    | 'bank_charges'
     | 'room'
   label: string
   transactions: Transaction[]
@@ -500,6 +509,17 @@ export function buildReport(
       label: 'Telephone',
       transactions: telephoneTx,
       total: telephoneTx.reduce((s, t) => s + t.amount, 0),
+    })
+  }
+
+  const bankChargesTx = transactions.filter((t) => !assigned.has(t.id) && isBankCharges(t.description))
+  if (bankChargesTx.length > 0) {
+    bankChargesTx.forEach((t) => assigned.add(t.id))
+    groups.push({
+      type: 'bank_charges',
+      label: 'Bank Charges',
+      transactions: bankChargesTx,
+      total: bankChargesTx.reduce((s, t) => s + t.amount, 0),
     })
   }
 

@@ -338,6 +338,7 @@ function ReportView({
       { type: 'income_tax', label: 'Income Tax', color: CATEGORY_COLORS['Income Tax'] },
       { type: 'advertisement', label: 'Advertisement', color: CATEGORY_COLORS.Advertisement },
       { type: 'telephone', label: 'Telephone', color: CATEGORY_COLORS.Telephone },
+      { type: 'bank_charges', label: 'Bank Charges', color: CATEGORY_COLORS['Bank Charges'] },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
     ]
     return defs.map(({ type, label, color }) => {
@@ -388,7 +389,7 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, then <strong>Rooms</strong> (everyone else).
+        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, then <strong>Rooms</strong> (everyone else).
       </p>
       <div className="monthly-report-wrap">
         <table className="monthly-report-table">
@@ -471,6 +472,7 @@ function ReportView({
                 {group.type === 'income_tax' && 'Income Tax · '}
                 {group.type === 'advertisement' && 'Advertisement · '}
                 {group.type === 'telephone' && 'Telephone · '}
+                {group.type === 'bank_charges' && 'Bank Charges · '}
                 {group.type === 'room' && 'Room · '}
                 {group.label}
               </span>
