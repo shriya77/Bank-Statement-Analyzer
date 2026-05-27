@@ -20,6 +20,14 @@ function formatAmount(amount: number): string {
   return amount >= 0 ? `+${n.format(amount)}` : n.format(amount)
 }
 
+function formatWholeRupees(amount: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
 function CategoryPill({ category }: { category: Transaction['category'] }) {
   const color = CATEGORY_COLORS[category]
   return (
@@ -406,18 +414,18 @@ function ReportView({
             {monthlyReport.rows.map((row) => (
               <tr key={row.month}>
                 <td>{row.month}</td>
-                <td>{row.room.toFixed(0)}</td>
-                <td>{row.shop.toFixed(0)}</td>
-                <td>{row.nehaHouse1.toFixed(0)}</td>
-                <td>{row.nealabhHouse2.toFixed(0)}</td>
+                <td>{formatWholeRupees(row.room)}</td>
+                <td>{formatWholeRupees(row.shop)}</td>
+                <td>{formatWholeRupees(row.nehaHouse1)}</td>
+                <td>{formatWholeRupees(row.nealabhHouse2)}</td>
               </tr>
             ))}
             <tr className="monthly-report-total">
               <td>Total</td>
-              <td>{monthlyReport.totals.room.toFixed(0)}</td>
-              <td>{monthlyReport.totals.shop.toFixed(0)}</td>
-              <td>{monthlyReport.totals.nehaHouse1.toFixed(0)}</td>
-              <td>{monthlyReport.totals.nealabhHouse2.toFixed(0)}</td>
+              <td>{formatWholeRupees(monthlyReport.totals.room)}</td>
+              <td>{formatWholeRupees(monthlyReport.totals.shop)}</td>
+              <td>{formatWholeRupees(monthlyReport.totals.nehaHouse1)}</td>
+              <td>{formatWholeRupees(monthlyReport.totals.nealabhHouse2)}</td>
             </tr>
           </tbody>
         </table>
