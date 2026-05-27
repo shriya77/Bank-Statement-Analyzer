@@ -2,10 +2,18 @@ export type Category =
   | 'Amma'
   | 'Shop'
   | 'House'
+  | 'House Tax'
   | 'SKI Towers Maintenance'
   | 'Electricity Payment'
   | 'Indu'
-  | 'Mutual Funds'
+  | 'Mutual Fund Purchase'
+  | 'Mutual Fund Sell'
+  | 'Others'
+  | 'HDFC'
+  | 'Interest'
+  | 'Income Tax'
+  | 'Advertisement'
+  | 'Telephone'
   | 'Room'
 
 export interface Transaction {
@@ -32,10 +40,18 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   Amma: '#a855f7',
   Shop: '#f59e0b',
   House: '#06b6d4',
+  'House Tax': '#f97316',
   'SKI Towers Maintenance': '#14b8a6',
   'Electricity Payment': '#eab308',
   Indu: '#ec4899',
-  'Mutual Funds': '#0ea5e9',
+  'Mutual Fund Purchase': '#0ea5e9',
+  'Mutual Fund Sell': '#38bdf8',
+  Others: '#94a3b8',
+  HDFC: '#2563eb',
+  Interest: '#84cc16',
+  'Income Tax': '#60a5fa',
+  Advertisement: '#f43f5e',
+  Telephone: '#22d3ee',
   Room: '#22c55e',
 }
 

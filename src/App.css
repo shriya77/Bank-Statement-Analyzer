@@ -346,6 +346,61 @@
   margin: 0 0 1rem;
 }
 
+.monthly-report-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: 1.25rem;
+}
+
+.monthly-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+  font-size: 0.9rem;
+}
+
+.monthly-report-table th,
+.monthly-report-table td {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.monthly-report-table th {
+  color: var(--text);
+  font-weight: 700;
+  text-align: right;
+  background: var(--surface-hover);
+}
+
+.monthly-report-table th:first-child,
+.monthly-report-table td:first-child {
+  text-align: left;
+  color: var(--text);
+}
+
+.monthly-report-table td {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.monthly-report-table td:first-child {
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
+
+.monthly-report-table tr:last-child td {
+  border-bottom: none;
+}
+
+.monthly-report-total td {
+  color: var(--text);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
 .mapping-table {
   width: 100%;
   border-collapse: collapse;

@@ -32,6 +32,30 @@ function CategoryPill({ category }: { category: Transaction['category'] }) {
   )
 }
 
+const monthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
+const fiscalMonthOrder = [3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 1, 2]
+
+function monthIndexFromDate(date: string): number | null {
+  const match = date.match(/\d{1,2}\/(\d{1,2})\/\d{2,4}/)
+  if (!match) return null
+  const month = Number(match[1])
+  return month >= 1 && month <= 12 ? month - 1 : null
+}
+
 function UploadZone({
   onFile,
   isDragging,
@@ -243,15 +267,77 @@ function ReportView({
   const groups = buildReport(transactions, mapping)
   const displayGroups = groups
 
+  const monthlyReport = useMemo(() => {
+    const rows = fiscalMonthOrder.map((monthIndex) => ({
+      monthIndex,
+      month: monthNames[monthIndex],
+      room: 0,
+      shop: 0,
+      nehaHouse1: 0,
+      nealabhHouse2: 0,
+    }))
+    const byMonth = new Map(rows.map((row) => [row.monthIndex, row]))
+
+    const addPositiveAmount = (
+      date: string,
+      amount: number,
+      key: 'room' | 'shop' | 'nehaHouse1' | 'nealabhHouse2'
+    ) => {
+      if (amount <= 0) return
+      const monthIndex = monthIndexFromDate(date)
+      if (monthIndex == null) return
+      const row = byMonth.get(monthIndex)
+      if (row) row[key] += amount
+    }
+
+    for (const group of displayGroups) {
+      if (group.type !== 'room' && group.type !== 'shop' && group.type !== 'house') {
+        continue
+      }
+      for (const tx of group.transactions) {
+        const desc = tx.description.toLowerCase()
+        if (desc.includes('neha mittal')) {
+          addPositiveAmount(tx.date, tx.amount, 'nehaHouse1')
+        } else if (desc.includes('nealabh bhatia')) {
+          addPositiveAmount(tx.date, tx.amount, 'nealabhHouse2')
+        } else if (group.type === 'shop') {
+          addPositiveAmount(tx.date, tx.amount, 'shop')
+        } else if (group.type === 'room') {
+          addPositiveAmount(tx.date, tx.amount, 'room')
+        }
+      }
+    }
+
+    const totals = rows.reduce(
+      (acc, row) => ({
+        room: acc.room + row.room,
+        shop: acc.shop + row.shop,
+        nehaHouse1: acc.nehaHouse1 + row.nehaHouse1,
+        nealabhHouse2: acc.nealabhHouse2 + row.nealabhHouse2,
+      }),
+      { room: 0, shop: 0, nehaHouse1: 0, nealabhHouse2: 0 }
+    )
+
+    return { rows, totals }
+  }, [displayGroups])
+
   const categorySummary = useMemo(() => {
     const defs: { type: ReportGroup['type']; label: string; color: string }[] = [
       { type: 'amma', label: 'Amma', color: CATEGORY_COLORS.Amma },
       { type: 'shop', label: 'Shops', color: CATEGORY_COLORS.Shop },
       { type: 'house', label: 'House', color: CATEGORY_COLORS.House },
+      { type: 'house_tax', label: 'House Tax', color: CATEGORY_COLORS['House Tax'] },
       { type: 'ski_towers_maintenance', label: 'SKI Maintenance', color: CATEGORY_COLORS['SKI Towers Maintenance'] },
       { type: 'electricity_payment', label: 'Electricity', color: CATEGORY_COLORS['Electricity Payment'] },
       { type: 'indu', label: 'Indu', color: CATEGORY_COLORS.Indu },
-      { type: 'mutual_funds', label: 'Mutual funds', color: CATEGORY_COLORS['Mutual Funds'] },
+      { type: 'mutual_fund_purchase', label: 'MF Purchase', color: CATEGORY_COLORS['Mutual Fund Purchase'] },
+      { type: 'mutual_fund_sell', label: 'MF Sell', color: CATEGORY_COLORS['Mutual Fund Sell'] },
+      { type: 'others', label: 'Others', color: CATEGORY_COLORS.Others },
+      { type: 'hdfc', label: 'HDFC', color: CATEGORY_COLORS.HDFC },
+      { type: 'bank_interest', label: 'Interest', color: CATEGORY_COLORS.Interest },
+      { type: 'income_tax', label: 'Income Tax', color: CATEGORY_COLORS['Income Tax'] },
+      { type: 'advertisement', label: 'Advertisement', color: CATEGORY_COLORS.Advertisement },
+      { type: 'telephone', label: 'Telephone', color: CATEGORY_COLORS.Telephone },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
     ]
     return defs.map(({ type, label, color }) => {
@@ -271,16 +357,23 @@ function ReportView({
   }, [displayGroups])
 
   const downloadReport = useCallback(() => {
-    const rows: string[][] = [['Client', 'Credit', 'Debit']]
-    for (const g of displayGroups) {
-      const credit = g.transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0)
-      const debit = g.transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0)
-      rows.push([
-        g.label,
-        credit.toFixed(2),
-        debit.toFixed(2),
-      ])
-    }
+    const rows: string[][] = [
+      ['Month', 'Room', 'Shop', 'Neha Mittal House 1', 'Nealabh House 2'],
+      ...monthlyReport.rows.map((row) => [
+        row.month,
+        row.room.toFixed(2),
+        row.shop.toFixed(2),
+        row.nehaHouse1.toFixed(2),
+        row.nealabhHouse2.toFixed(2),
+      ]),
+      [
+        'Total',
+        monthlyReport.totals.room.toFixed(2),
+        monthlyReport.totals.shop.toFixed(2),
+        monthlyReport.totals.nehaHouse1.toFixed(2),
+        monthlyReport.totals.nealabhHouse2.toFixed(2),
+      ],
+    ]
     const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -289,14 +382,45 @@ function ReportView({
     a.download = `report-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }, [displayGroups])
+  }, [monthlyReport])
 
   return (
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual funds (O-MF)</strong>, then <strong>Rooms</strong> (everyone else).
+        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, then <strong>Rooms</strong> (everyone else).
       </p>
+      <div className="monthly-report-wrap">
+        <table className="monthly-report-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Room</th>
+              <th>Shop</th>
+              <th>Neha Mittal House 1</th>
+              <th>Nealabh House 2</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monthlyReport.rows.map((row) => (
+              <tr key={row.month}>
+                <td>{row.month}</td>
+                <td>{row.room.toFixed(0)}</td>
+                <td>{row.shop.toFixed(0)}</td>
+                <td>{row.nehaHouse1.toFixed(0)}</td>
+                <td>{row.nealabhHouse2.toFixed(0)}</td>
+              </tr>
+            ))}
+            <tr className="monthly-report-total">
+              <td>Total</td>
+              <td>{monthlyReport.totals.room.toFixed(0)}</td>
+              <td>{monthlyReport.totals.shop.toFixed(0)}</td>
+              <td>{monthlyReport.totals.nehaHouse1.toFixed(0)}</td>
+              <td>{monthlyReport.totals.nealabhHouse2.toFixed(0)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <div className="category-summary-grid">
         {categorySummary.map((cat) => (
           <div
@@ -335,10 +459,18 @@ function ReportView({
                 {group.type === 'amma' && 'Amma · '}
                 {group.type === 'shop' && 'Shop · '}
                 {group.type === 'house' && 'House · '}
+                {group.type === 'house_tax' && 'House Tax · '}
                 {group.type === 'ski_towers_maintenance' && 'SKI Maintenance · '}
                 {group.type === 'electricity_payment' && 'Electricity · '}
                 {group.type === 'indu' && 'Indu · '}
-                {group.type === 'mutual_funds' && 'Mutual funds · '}
+                {group.type === 'mutual_fund_purchase' && 'MF Purchase · '}
+                {group.type === 'mutual_fund_sell' && 'MF Sell · '}
+                {group.type === 'others' && 'Others · '}
+                {group.type === 'hdfc' && 'HDFC · '}
+                {group.type === 'bank_interest' && 'Interest · '}
+                {group.type === 'income_tax' && 'Income Tax · '}
+                {group.type === 'advertisement' && 'Advertisement · '}
+                {group.type === 'telephone' && 'Telephone · '}
                 {group.type === 'room' && 'Room · '}
                 {group.label}
               </span>
