@@ -20,14 +20,6 @@ function formatAmount(amount: number): string {
   return amount >= 0 ? `+${n.format(amount)}` : n.format(amount)
 }
 
-function formatWholeRupees(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
-
 function CategoryPill({ category }: { category: Transaction['category'] }) {
   const color = CATEGORY_COLORS[category]
   return (
@@ -399,37 +391,9 @@ function ReportView({
       <p className="report-hint">
         <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, then <strong>Rooms</strong> (everyone else).
       </p>
-      <div className="monthly-report-wrap">
-        <table className="monthly-report-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Room</th>
-              <th>Shop</th>
-              <th>Neha Mittal House 1</th>
-              <th>Nealabh House 2</th>
-            </tr>
-          </thead>
-          <tbody>
-            {monthlyReport.rows.map((row) => (
-              <tr key={row.month}>
-                <td>{row.month}</td>
-                <td>{formatWholeRupees(row.room)}</td>
-                <td>{formatWholeRupees(row.shop)}</td>
-                <td>{formatWholeRupees(row.nehaHouse1)}</td>
-                <td>{formatWholeRupees(row.nealabhHouse2)}</td>
-              </tr>
-            ))}
-            <tr className="monthly-report-total">
-              <td>Total</td>
-              <td>{formatWholeRupees(monthlyReport.totals.room)}</td>
-              <td>{formatWholeRupees(monthlyReport.totals.shop)}</td>
-              <td>{formatWholeRupees(monthlyReport.totals.nehaHouse1)}</td>
-              <td>{formatWholeRupees(monthlyReport.totals.nealabhHouse2)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <button type="button" className="btn-primary download-report-btn" onClick={downloadReport}>
+        Download monthly table (CSV)
+      </button>
       <div className="category-summary-grid">
         {categorySummary.map((cat) => (
           <div
@@ -457,9 +421,6 @@ function ReportView({
           </div>
         ))}
       </div>
-      <button type="button" className="btn-primary download-report-btn" onClick={downloadReport}>
-        Download report (CSV)
-      </button>
       <div className="report-groups">
         {displayGroups.map((group, idx) => (
           <div key={`${group.type}-${group.label}-${idx}`} className="report-group">
