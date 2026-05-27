@@ -248,6 +248,8 @@ function ReportView({
       { type: 'amma', label: 'Amma', color: CATEGORY_COLORS.Amma },
       { type: 'shop', label: 'Shops', color: CATEGORY_COLORS.Shop },
       { type: 'house', label: 'House', color: CATEGORY_COLORS.House },
+      { type: 'ski_towers_maintenance', label: 'SKI Maintenance', color: CATEGORY_COLORS['SKI Towers Maintenance'] },
+      { type: 'electricity_payment', label: 'Electricity', color: CATEGORY_COLORS['Electricity Payment'] },
       { type: 'indu', label: 'Indu', color: CATEGORY_COLORS.Indu },
       { type: 'mutual_funds', label: 'Mutual funds', color: CATEGORY_COLORS['Mutual Funds'] },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
@@ -293,7 +295,7 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Indu</strong>, <strong>Mutual funds (O-MF)</strong>, then <strong>Rooms</strong> (everyone else).
+        <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual funds (O-MF)</strong>, then <strong>Rooms</strong> (everyone else).
       </p>
       <div className="category-summary-grid">
         {categorySummary.map((cat) => (
@@ -333,6 +335,8 @@ function ReportView({
                 {group.type === 'amma' && 'Amma · '}
                 {group.type === 'shop' && 'Shop · '}
                 {group.type === 'house' && 'House · '}
+                {group.type === 'ski_towers_maintenance' && 'SKI Maintenance · '}
+                {group.type === 'electricity_payment' && 'Electricity · '}
                 {group.type === 'indu' && 'Indu · '}
                 {group.type === 'mutual_funds' && 'Mutual funds · '}
                 {group.type === 'room' && 'Room · '}

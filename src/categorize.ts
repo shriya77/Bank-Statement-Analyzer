@@ -10,6 +10,10 @@ export function categorizeDescription(description: string): Category {
       return 'Shop'
     case 'house':
       return 'House'
+    case 'ski_towers_maintenance':
+      return 'SKI Towers Maintenance'
+    case 'electricity_payment':
+      return 'Electricity Payment'
     case 'indu':
       return 'Indu'
     case 'mutual_funds':
