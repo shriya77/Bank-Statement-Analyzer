@@ -1,60 +1,102 @@
-import type { Transaction } from './types'
-import type { RoomShopMapping } from './types'
+import { defaultClientDatabase, type ClientHistoryEntry, type RoomShopMapping, type Transaction } from './types'
 
 const lower = (s: string) => s.toLowerCase()
 
-// Explicit shop identifiers requested by user, filtered to those with at least
-// one >= 9,000 deposit in the current statement. BRIYANIPALAYAM includes aliases.
-const EXPLICIT_SHOPS = [
-  '123dentistryemerald',
-  'briyanipalayam',
-  'nirmala devi',
-  'welldevi1978',
-  'nathiya',
-  'vishali mahendran',
-  'karthikeyan a',
-  'advance',
-  'saranya',
-  'saridha',
-  'rental',
-] as const
-
-function matchesExplicitShop(d: string, id: string): boolean {
-  if (id === 'briyanipalayam') {
-    return (
-      d.includes('briyanipalayam') ||
-      d.includes('biryanipalayam') ||
-      d.includes('biryani palayam') ||
-      d.includes('srs foods') ||
-      d.includes('s r s foods') ||
-      d.includes('shabana')
-    )
-  }
-  if (id === 'nirmala devi') return d.includes('nirmala devi') || d.includes('welldevi1978')
-  if (id === 'nathiya') return d.includes('nathiya')
-  if (id === 'vishali mahendran') return d.includes('vishali mahendran') || d.includes('vishalirm')
-  if (id === 'karthikeyan a') return d.includes('karthikeyan  a') || d.includes('karthikeyan a')
-  if (id === 'saranya') return d.includes('saranya')
-  if (id === 'saridha') return d.includes('saridha') || d.includes('sansarva')
-  if (id === 'advance') return d.includes('shop') && d.includes('advance')
-  if (id === 'rental') return d.includes('shop') && d.includes('rental')
-  return d.includes(id)
+interface ClientUnitMatch {
+  unit: RoomShopMapping
+  client: ClientHistoryEntry | null
 }
 
-function getExplicitShopLabel(d: string): string | null {
-  const match = EXPLICIT_SHOPS.find((id) => matchesExplicitShop(d, id))
-  if (!match) return null
-  if (match === 'briyanipalayam') return 'BRIYANIPALAYAM'
-  if (match === 'nirmala devi') return 'NIRMALA DEVI'
-  if (match === 'welldevi1978') return 'NIRMALA DEVI'
-  if (match === 'nathiya') return 'NATHIYA'
-  if (match === 'vishali mahendran') return 'VISHALI MAHENDRAN'
-  if (match === 'karthikeyan a') return 'KARTHIKEYAN A'
-  if (match === 'saranya') return 'SARANYA'
-  if (match === 'saridha') return 'SARIDHA'
-  if (match === 'advance') return 'ADVANCE'
-  if (match === 'rental') return 'RENTAL'
-  return match.toUpperCase()
+function activeDatabase(mapping: RoomShopMapping[]): RoomShopMapping[] {
+  return mapping.length > 0 ? mapping : defaultClientDatabase()
+}
+
+function parseStatementDate(date: string): number | null {
+  const slash = date.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)
+  if (slash) {
+    const year = Number(slash[3].length === 2 ? `20${slash[3]}` : slash[3])
+    return new Date(year, Number(slash[2]) - 1, Number(slash[1])).getTime()
+  }
+  const parsed = new Date(date).getTime()
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function parseInputDate(date: string): number | null {
+  if (!date) return null
+  const parsed = new Date(`${date}T00:00:00`).getTime()
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function isClientActiveForDate(client: ClientHistoryEntry, transactionDate?: string): boolean {
+  if (!client.startDate && !client.endDate) return true
+  if (!transactionDate) return true
+  const txTime = parseStatementDate(transactionDate)
+  if (txTime == null) return true
+  const start = parseInputDate(client.startDate)
+  const end = parseInputDate(client.endDate)
+  if (start != null && txTime < start) return false
+  if (end != null && txTime > end) return false
+  return true
+}
+
+function clientAliases(client: ClientHistoryEntry): string[] {
+  return [client.name, ...client.aliases.split(/[\n,]/)]
+    .map((alias) => lower(alias).trim())
+    .filter((alias) => alias.length >= 3)
+}
+
+function matchesAlias(description: string, alias: string): boolean {
+  return description.includes(alias)
+}
+
+function matchesRoomIdentifier(description: string, roomNumber: string): boolean {
+  const escaped = roomNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return (
+    new RegExp(`\\broom\\s*(?:no\\.?|number|#)?\\s*${escaped}\\b`, 'i').test(description) ||
+    new RegExp(`\\b${escaped}\\s*(?:room|rent|advance|deposit|eb|electricity)\\b`, 'i').test(description) ||
+    new RegExp(`\\b(?:rent|advance|deposit|eb|electricity)\\s*${escaped}\\b`, 'i').test(description)
+  )
+}
+
+function matchesShopIdentifier(description: string, identifier: string): boolean {
+  const id = lower(identifier).trim()
+  return !!id && (description.includes(id) || description.includes(`shop ${id}`) || description.includes(`${id} shop`))
+}
+
+function findClientUnitMatch(
+  description: string,
+  mapping: RoomShopMapping[],
+  type: 'shop' | 'room',
+  transactionDate?: string
+): ClientUnitMatch | null {
+  const d = lower(description)
+  for (const unit of activeDatabase(mapping).filter((u) => u.type === type)) {
+    const clientMatch = unit.clients.find(
+      (client) =>
+        isClientActiveForDate(client, transactionDate) &&
+        clientAliases(client).some((alias) => matchesAlias(d, alias))
+    )
+    if (clientMatch) return { unit, client: clientMatch }
+
+    if (type === 'room' && matchesRoomIdentifier(description, unit.identifier)) {
+      const datedClient =
+        unit.clients.find((client) => isClientActiveForDate(client, transactionDate)) ?? null
+      return { unit, client: datedClient }
+    }
+
+    if (type === 'shop' && matchesShopIdentifier(d, unit.identifier)) {
+      const datedClient =
+        unit.clients.find((client) => isClientActiveForDate(client, transactionDate)) ?? null
+      return { unit, client: datedClient }
+    }
+  }
+  return null
+}
+
+function clientUnitLabel(match: ClientUnitMatch): string {
+  return match.client?.name.trim()
+    ? `${match.unit.unitName}: ${match.client.name.trim()}`
+    : match.unit.unitName
 }
 
 export type Bucket =
@@ -91,7 +133,7 @@ export function isSkiTowersMaintenance(description: string): boolean {
 /** House tax payments */
 export function isHouseTax(description: string): boolean {
   const d = lower(description)
-  return d.includes('payubruhatbengalurum')
+  return d.includes('payubruhatbengalurum') || d.includes('billdkcommissionerat')
 }
 
 /** Indu — avoid matching "NIPPON IND" in O-MF lines */
@@ -128,7 +170,6 @@ export function isOthers(description: string): boolean {
     d.includes('arunava chatterjee') ||
     d.includes('nithiyanantham ganesh') ||
     d.includes('billdkflyscoot') ||
-    d.includes('billdkcommissionerat') ||
     d.includes('tata motors ltd ordi div24 25') ||
     d.includes('ramraj cotton') ||
     d.includes('avenue supermart') ||
@@ -141,6 +182,8 @@ export function isOthers(description: string): boolean {
     d.includes('sonata software') ||
     d.includes('trident limited') ||
     d.includes('confidence petroleum') ||
+    d.includes('cartus financial') ||
+    d.includes('chas0inbx01') ||
     (d.includes('tax') && d.includes('refund')) ||
     d.includes('itdtax refund')
   )
@@ -202,31 +245,17 @@ export function isKnownRoomTenant(description: string): boolean {
   )
 }
 
-export function isHouse(description: string, mapping: RoomShopMapping[]): boolean {
+export function isHouse(description: string, _mapping: RoomShopMapping[]): boolean {
   const d = lower(description)
-  if (d.includes('neha mittal') || d.includes('nealabh bhatia')) return true
-  return mapping.some((m) => m.type === 'house' && m.identifier.trim() && d.includes(lower(m.identifier)))
+  return d.includes('neha mittal') || d.includes('nealabh bhatia')
 }
 
-export function isShop(description: string, mapping: RoomShopMapping[]): boolean {
-  const d = lower(description)
-  for (const m of mapping) {
-    if (m.type !== 'shop' || !m.identifier.trim()) continue
-    if (matchShopIdentifier(d, lower(m.identifier))) return true
-  }
-  if (getExplicitShopLabel(d)) return true
+export function isShop(description: string, mapping: RoomShopMapping[], transactionDate?: string): boolean {
+  if (findClientUnitMatch(description, mapping, 'shop', transactionDate)) return true
   // Anything with "shop" in the narration belongs to Shops, including TEA SHOP and TEASHOP.
   if (/\b[a-z0-9]*shop[a-z0-9]*\b/i.test(description)) return true
   if (/(?:MAINTENANCE\s+)?SHOP\s+[A-Za-z]+/i.test(description)) return true
   if (/\b[A-Za-z]{4,}\s+SHOP\b/i.test(description)) return true
-  if (
-    d.includes('srs foods') ||
-    d.includes('s r s foods') ||
-    d.includes('shabana parvin r') ||
-    d.includes('briyanipalayam') ||
-    d.includes('biryanipalayam') ||
-    d.includes('biryani palayam')
-  ) return true
   const beforeAt = description.match(/([A-Za-z0-9]{5,})@/g)
   if (beforeAt) {
     for (const m of beforeAt) {
@@ -238,27 +267,10 @@ export function isShop(description: string, mapping: RoomShopMapping[]): boolean
   return false
 }
 
-function matchShopIdentifier(d: string, id: string): boolean {
-  const asWord = id.replace(/\s+/g, ' ')
-  if (d.includes(asWord)) return true
-  if (d.includes(`shop ${asWord}`) || d.includes(`${asWord} shop`)) return true
-  if (
-    (id.includes('briyan') || id.includes('biryan')) &&
-    (d.includes('srs foods') || d.includes('s r s foods') || d.includes('shabana parvin r'))
-  )
-    return true
-  return false
-}
-
 /** Shop label for grouping (one row per shop in report) */
-export function getShopGroupKey(description: string, mapping: RoomShopMapping[]): string {
-  const d = lower(description)
-  for (const m of mapping) {
-    if (m.type === 'shop' && m.identifier.trim() && matchShopIdentifier(d, lower(m.identifier)))
-      return m.customerName?.trim() || m.identifier
-  }
-  const explicitLabel = getExplicitShopLabel(d)
-  if (explicitLabel) return explicitLabel
+export function getShopGroupKey(description: string, mapping: RoomShopMapping[], transactionDate?: string): string {
+  const match = findClientUnitMatch(description, mapping, 'shop', transactionDate)
+  if (match) return clientUnitLabel(match)
   const shopBefore = description.match(/(?:MAINTENANCE\s+)?SHOP\s+([A-Za-z]+)/i)
   if (shopBefore) return shopBefore[1]
   const shopAfter = description.match(/\b([A-Za-z]{4,})\s+SHOP/i)
@@ -337,6 +349,7 @@ export interface ReportGroup {
     | 'advertisement'
     | 'telephone'
     | 'bank_charges'
+    | 'other_rooms'
     | 'room'
   label: string
   transactions: Transaction[]
@@ -361,7 +374,7 @@ export function buildReport(
     })
   }
 
-  const maintenanceTx = transactions.filter((t) => isSkiTowersMaintenance(t.description))
+  const maintenanceTx = transactions.filter((t) => !assigned.has(t.id) && isSkiTowersMaintenance(t.description))
   if (maintenanceTx.length > 0) {
     maintenanceTx.forEach((t) => assigned.add(t.id))
     groups.push({
@@ -372,7 +385,7 @@ export function buildReport(
     })
   }
 
-  const ammaTx = transactions.filter((t) => isAmma(t.description))
+  const ammaTx = transactions.filter((t) => !assigned.has(t.id) && isAmma(t.description))
   if (ammaTx.length > 0) {
     ammaTx.forEach((t) => assigned.add(t.id))
     groups.push({
@@ -409,8 +422,8 @@ export function buildReport(
   for (const t of transactions) {
     if (assigned.has(t.id)) continue
     if (isKnownRoomTenant(t.description)) continue
-    if (!isShop(t.description, mapping)) continue
-    const key = getShopGroupKey(t.description, mapping)
+    if (!isShop(t.description, mapping, t.date)) continue
+    const key = getShopGroupKey(t.description, mapping, t.date)
     if (!shopBuckets[key]) shopBuckets[key] = []
     shopBuckets[key].push(t)
     assigned.add(t.id)
@@ -535,10 +548,16 @@ export function buildReport(
   }
 
   const roomByKey: Record<string, { label: string; tx: Transaction[] }> = {}
+  const otherRoomTx: Transaction[] = []
   for (const t of transactions) {
     if (assigned.has(t.id)) continue
-    const key = getPersonAccountKey(t.description)
-    const label = getPersonAccountLabel(t.description)
+    const roomMatch = findClientUnitMatch(t.description, mapping, 'room', t.date)
+    if (!roomMatch) {
+      otherRoomTx.push(t)
+      continue
+    }
+    const key = `${roomMatch.unit.id}:${roomMatch.client?.id ?? 'unassigned'}`
+    const label = clientUnitLabel(roomMatch)
     if (!roomByKey[key]) roomByKey[key] = { label, tx: [] }
     roomByKey[key].tx.push(t)
   }
@@ -552,6 +571,15 @@ export function buildReport(
       label,
       transactions: tx,
       total: tx.reduce((s, t) => s + t.amount, 0),
+    })
+  }
+
+  if (otherRoomTx.length > 0) {
+    groups.push({
+      type: 'other_rooms',
+      label: 'Other Rooms',
+      transactions: otherRoomTx,
+      total: otherRoomTx.reduce((s, t) => s + t.amount, 0),
     })
   }
 

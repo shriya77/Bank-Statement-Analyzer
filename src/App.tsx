@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { isStatementFile, parseBankFile } from './parseCsv'
-import type { Transaction } from './types'
-import type { RoomShopMapping } from './types'
+import type { ClientHistoryEntry, ClientUnitType, RoomShopMapping, Transaction } from './types'
 import {
+  createCustomUnit,
+  createEmptyClient,
+  defaultClientDatabase,
   loadMappingFromStorage,
   saveMappingToStorage,
-  BUILTIN_MAPPING_TYPES,
   CATEGORY_COLORS,
 } from './types'
-import { buildReport, extractRoomShopFromTransactions, type ReportGroup } from './reportLogic'
+import { buildReport, type ReportGroup } from './reportLogic'
 import './App.css'
 
 function formatAmount(amount: number): string {
@@ -117,142 +118,225 @@ type TabId = 'upload' | 'mapping' | 'report'
 function MappingTable({
   mapping,
   setMapping,
-  transactions,
 }: {
   mapping: RoomShopMapping[]
   setMapping: React.Dispatch<React.SetStateAction<RoomShopMapping[]>>
-  transactions: Transaction[]
 }) {
-  const addRow = useCallback(() => {
-    setMapping((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        type: 'shop' as const,
-        identifier: '',
-        customerName: '',
-      },
-    ])
-  }, [setMapping])
-
-  const autoPopulate = useCallback(() => {
-    const extracted = extractRoomShopFromTransactions(transactions)
-    const existingKeys = new Set(
-      mapping.map((m) => `${m.type}:${m.identifier.toLowerCase().trim()}`)
-    )
-    const toAdd = extracted.filter(
-      (e) => !existingKeys.has(`${e.type}:${e.identifier.toLowerCase().trim()}`)
-    )
-    if (toAdd.length === 0) return
-    setMapping((prev) => [
-      ...prev,
-      ...toAdd.map((e) => ({
-        id: crypto.randomUUID(),
-        type: e.type,
-        identifier: e.identifier,
-        customerName: '',
-      })),
-    ])
-  }, [transactions, mapping, setMapping])
-
-  const updateRow = useCallback(
+  const updateUnit = useCallback(
     (id: string, patch: Partial<RoomShopMapping>) => {
       setMapping((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...patch } : r))
+        prev.map((unit) => (unit.id === id ? { ...unit, ...patch } : unit))
       )
     },
     [setMapping]
   )
-  const removeRow = useCallback(
-    (id: string) => setMapping((prev) => prev.filter((r) => r.id !== id)),
+
+  const addUnit = useCallback(
+    (type: ClientUnitType) => {
+      setMapping((prev) => {
+        const existingNumbers = prev
+          .filter((unit) => unit.type === type)
+          .map((unit) => Number(unit.unitName.match(/\d+/)?.[0] ?? 0))
+          .filter((n) => n > 0)
+        const nextNumber = Math.max(0, ...existingNumbers) + 1
+        return [...prev, createCustomUnit(type, nextNumber)]
+      })
+    },
     [setMapping]
   )
-  useEffect(() => {
-    saveMappingToStorage(mapping)
-  }, [mapping])
+
+  const removeUnit = useCallback(
+    (id: string) => setMapping((prev) => prev.filter((unit) => unit.id !== id)),
+    [setMapping]
+  )
+
+  const addClient = useCallback(
+    (unitId: string) => {
+      setMapping((prev) =>
+        prev.map((unit) =>
+          unit.id === unitId
+            ? { ...unit, clients: [...unit.clients, createEmptyClient()] }
+            : unit
+        )
+      )
+    },
+    [setMapping]
+  )
+
+  const updateClient = useCallback(
+    (unitId: string, clientId: string, patch: Partial<ClientHistoryEntry>) => {
+      setMapping((prev) =>
+        prev.map((unit) =>
+          unit.id === unitId
+            ? {
+                ...unit,
+                clients: unit.clients.map((client) =>
+                  client.id === clientId ? { ...client, ...patch } : client
+                ),
+              }
+            : unit
+        )
+      )
+    },
+    [setMapping]
+  )
+
+  const removeClient = useCallback(
+    (unitId: string, clientId: string) => {
+      setMapping((prev) =>
+        prev.map((unit) =>
+          unit.id === unitId
+            ? {
+                ...unit,
+                clients: unit.clients.filter((client) => client.id !== clientId),
+              }
+            : unit
+        )
+      )
+    },
+    [setMapping]
+  )
+
+  const resetDatabase = useCallback(() => {
+    const confirmed = window.confirm(
+      'Reset the client database to the default shops and rooms? This will remove any custom clients you added.'
+    )
+    if (confirmed) setMapping(defaultClientDatabase())
+  }, [setMapping])
+
+  const renderUnits = (type: ClientUnitType) => {
+    const units = mapping.filter((unit) => unit.type === type)
+    return (
+      <div className="client-unit-list">
+        {units.map((unit) => {
+          const isDefaultUnit = /^(shop|room)-\d+$/.test(unit.id)
+          return (
+            <article className="client-unit-card" key={unit.id}>
+              <div className="client-unit-header">
+                <label>
+                  <span>{type === 'shop' ? 'Shop label' : 'Room label'}</span>
+                  <input
+                    type="text"
+                    value={unit.unitName}
+                    onChange={(e) => updateUnit(unit.id, { unitName: e.target.value })}
+                    placeholder={type === 'shop' ? 'Shop 1' : 'Room 301'}
+                  />
+                </label>
+                <label>
+                  <span>Identifier</span>
+                  <input
+                    type="text"
+                    value={unit.identifier}
+                    onChange={(e) => updateUnit(unit.id, { identifier: e.target.value })}
+                    placeholder={type === 'shop' ? 'shop 1' : '301'}
+                  />
+                </label>
+                {!isDefaultUnit && (
+                  <button type="button" className="btn-ghost" onClick={() => removeUnit(unit.id)}>
+                    Remove unit
+                  </button>
+                )}
+              </div>
+
+              {unit.clients.length === 0 && (
+                <p className="empty-client-note">No client saved yet.</p>
+              )}
+
+              <div className="client-history-list">
+                {unit.clients.map((client) => (
+                  <div className="client-history-row" key={client.id}>
+                    <label>
+                      <span>Client name</span>
+                      <input
+                        type="text"
+                        value={client.name}
+                        onChange={(e) =>
+                          updateClient(unit.id, client.id, { name: e.target.value })
+                        }
+                        placeholder={type === 'shop' ? 'BRIYANIPALAYAM' : 'Tenant name'}
+                      />
+                    </label>
+                    <label className="client-aliases-field">
+                      <span>Aliases / narration matches</span>
+                      <textarea
+                        value={client.aliases}
+                        onChange={(e) =>
+                          updateClient(unit.id, client.id, { aliases: e.target.value })
+                        }
+                        placeholder="One per line: UPI name, business name, old spelling"
+                        rows={3}
+                      />
+                    </label>
+                    <label>
+                      <span>From</span>
+                      <input
+                        type="date"
+                        value={client.startDate}
+                        onChange={(e) =>
+                          updateClient(unit.id, client.id, { startDate: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>To</span>
+                      <input
+                        type="date"
+                        value={client.endDate}
+                        onChange={(e) =>
+                          updateClient(unit.id, client.id, { endDate: e.target.value })
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-ghost client-remove-btn"
+                      onClick={() => removeClient(unit.id, client.id)}
+                    >
+                      Remove client
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button type="button" className="btn-secondary" onClick={() => addClient(unit.id)}>
+                + Add current/old client
+              </button>
+            </article>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <section className="mapping-section">
-      <h2>Optional overrides (Shop / House / Room)</h2>
+      <h2>Room / Shop client database</h2>
       <p className="mapping-hint">
-        Automatic split: <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Indu</strong>, <strong>Mutual funds (O-MF)</strong>, and <strong>Rooms</strong>. Use overrides only to tweak shop/house identifiers.
+        Store current and old clients here. Add aliases from the bank narration, and use
+        optional from/to dates when a shop or room changes occupants so yearly statements still
+        classify old payments correctly.
       </p>
-      {transactions.length > 0 && (
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={autoPopulate}
-        >
-          Auto-populate shops from statement
+      <div className="database-actions">
+        <button type="button" className="btn-primary" onClick={() => addUnit('shop')}>
+          + Add shop
         </button>
-      )}
-      <div className="table-wrap">
-        <table className="mapping-table">
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Identifier</th>
-              <th>Customer name</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {mapping.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  <select
-                    value={row.type}
-                    onChange={(e) =>
-                      updateRow(row.id, {
-                        type: e.target.value as RoomShopMapping['type'],
-                      })
-                    }
-                  >
-                    {BUILTIN_MAPPING_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t.charAt(0).toUpperCase() + t.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <input
-                    type="text"
-                    value={row.identifier}
-                    onChange={(e) =>
-                      updateRow(row.id, { identifier: e.target.value.trim() })
-                    }
-                    placeholder="e.g. 123DENTISTRYEMERALD, BRIYANIPALAYAM, NEHA MITTAL"
-                  />
-                </td>
-                <td>
-                  <input
-                    type="text"
-                    value={row.customerName}
-                    onChange={(e) =>
-                      updateRow(row.id, { customerName: e.target.value.trim() })
-                    }
-                    placeholder="Customer / tenant name"
-                  />
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() => removeRow(row.id)}
-                    aria-label="Remove row"
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <button type="button" className="btn-secondary" onClick={() => addUnit('room')}>
+          + Add room
+        </button>
+        <button type="button" className="btn-secondary" onClick={resetDatabase}>
+          Reset to default shops/rooms
+        </button>
       </div>
-      <button type="button" className="btn-primary mapping-add-row" onClick={addRow}>
-        + Add override row
-      </button>
+
+      <div className="database-section">
+        <h3>Shops</h3>
+        {renderUnits('shop')}
+      </div>
+
+      <div className="database-section">
+        <h3>Rooms</h3>
+        {renderUnits('room')}
+      </div>
     </section>
   )
 }
@@ -291,7 +375,7 @@ function ReportView({
     }
 
     for (const group of displayGroups) {
-      if (group.type !== 'room' && group.type !== 'shop' && group.type !== 'house') {
+      if (group.type !== 'room' && group.type !== 'other_rooms' && group.type !== 'shop' && group.type !== 'house') {
         continue
       }
       for (const tx of group.transactions) {
@@ -302,7 +386,7 @@ function ReportView({
           addPositiveAmount(tx.date, tx.amount, 'nealabhHouse2')
         } else if (group.type === 'shop') {
           addPositiveAmount(tx.date, tx.amount, 'shop')
-        } else if (group.type === 'room') {
+        } else if (group.type === 'room' || group.type === 'other_rooms') {
           addPositiveAmount(tx.date, tx.amount, 'room')
         }
       }
@@ -340,6 +424,7 @@ function ReportView({
       { type: 'telephone', label: 'Telephone', color: CATEGORY_COLORS.Telephone },
       { type: 'bank_charges', label: 'Bank Charges', color: CATEGORY_COLORS['Bank Charges'] },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
+      { type: 'other_rooms', label: 'Other Rooms', color: CATEGORY_COLORS.Room },
     ]
     return defs.map(({ type, label, color }) => {
       const matching = displayGroups.filter((g) => g.type === type)
@@ -389,7 +474,7 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, then <strong>Rooms</strong> (everyone else).
+        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, database-matched <strong>Rooms</strong>, then <strong>Other Rooms</strong>.
       </p>
       <button type="button" className="btn-primary download-report-btn" onClick={downloadReport}>
         Download monthly table (CSV)
@@ -443,6 +528,7 @@ function ReportView({
                 {group.type === 'telephone' && 'Telephone · '}
                 {group.type === 'bank_charges' && 'Bank Charges · '}
                 {group.type === 'room' && 'Room · '}
+                {group.type === 'other_rooms' && 'Other Rooms · '}
                 {group.label}
               </span>
               <span
@@ -492,29 +578,9 @@ export default function App() {
     loadMappingFromStorage()
   )
 
-  // Auto-populate room/shop mapping from statement when CSV is loaded
   useEffect(() => {
-    if (transactions.length === 0) return
-    const extracted = extractRoomShopFromTransactions(transactions)
-    setMapping((prev) => {
-      const existingKeys = new Set(
-        prev.map((m) => `${m.type}:${m.identifier.toLowerCase().trim()}`)
-      )
-      const toAdd = extracted.filter(
-        (e) => !existingKeys.has(`${e.type}:${e.identifier.toLowerCase().trim()}`)
-      )
-      if (toAdd.length === 0) return prev
-      return [
-        ...prev,
-        ...toAdd.map((e) => ({
-          id: crypto.randomUUID(),
-          type: e.type,
-          identifier: e.identifier,
-          customerName: '',
-        })),
-      ]
-    })
-  }, [transactions])
+    saveMappingToStorage(mapping)
+  }, [mapping])
 
   const handleFile = useCallback(async (file: File) => {
     setError(null)
@@ -560,7 +626,7 @@ export default function App() {
           className={tab === 'mapping' ? 'active' : ''}
           onClick={() => setTab('mapping')}
         >
-          Room / Shop mapping
+          Client database
         </button>
         <button
           type="button"
@@ -659,7 +725,6 @@ export default function App() {
         <MappingTable
           mapping={mapping}
           setMapping={setMapping}
-          transactions={transactions}
         />
       )}
 
