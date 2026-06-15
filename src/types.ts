@@ -163,6 +163,13 @@ export function defaultClientDatabase(): RoomShopMapping[] {
       clients: [client('shop-6-saridha', 'SARIDHA', 'SARIDHA\nSANSARVA')],
     },
     {
+      id: 'shop-mahitha',
+      type: 'shop',
+      unitName: 'Shop Mahitha',
+      identifier: 'mahitha',
+      clients: [client('shop-mahitha-midhun', 'Mahitha Midhun', 'MAHITHA MIDHUN\nMAHITHA')],
+    },
+    {
       id: 'shop-advance',
       type: 'shop',
       unitName: 'Shop Advance',

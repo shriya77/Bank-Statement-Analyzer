@@ -547,7 +547,7 @@ export function buildReport(
     })
   }
 
-  const roomByKey: Record<string, { label: string; tx: Transaction[] }> = {}
+  const roomByKey: Record<string, { label: string; sortValue: number; tx: Transaction[] }> = {}
   const otherRoomTx: Transaction[] = []
   for (const t of transactions) {
     if (assigned.has(t.id)) continue
@@ -558,12 +558,12 @@ export function buildReport(
     }
     const key = `${roomMatch.unit.id}:${roomMatch.client?.id ?? 'unassigned'}`
     const label = clientUnitLabel(roomMatch)
-    if (!roomByKey[key]) roomByKey[key] = { label, tx: [] }
+    const roomNumber = Number(roomMatch.unit.identifier.match(/\d+/)?.[0] ?? Number.MAX_SAFE_INTEGER)
+    if (!roomByKey[key]) roomByKey[key] = { label, sortValue: roomNumber, tx: [] }
     roomByKey[key].tx.push(t)
   }
   const roomEntries = Object.entries(roomByKey).sort(
-    (a, b) => Math.abs(b[1].tx.reduce((s, t) => s + t.amount, 0)) -
-      Math.abs(a[1].tx.reduce((s, t) => s + t.amount, 0))
+    (a, b) => a[1].sortValue - b[1].sortValue || a[1].label.localeCompare(b[1].label)
   )
   for (const [, { label, tx }] of roomEntries) {
     groups.push({
