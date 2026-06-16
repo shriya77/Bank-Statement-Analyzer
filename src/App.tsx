@@ -21,6 +21,14 @@ function formatAmount(amount: number): string {
   return amount >= 0 ? `+${n.format(amount)}` : n.format(amount)
 }
 
+function formatCompactINR(amount: number): string {
+  const abs = Math.abs(amount)
+  if (abs >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`
+  if (abs >= 100000) return `₹${(amount / 100000).toFixed(1)}L`
+  if (abs >= 1000) return `₹${(amount / 1000).toFixed(0)}K`
+  return `₹${Math.round(amount)}`
+}
+
 function CategoryPill({ category }: { category: Transaction['category'] }) {
   const color = CATEGORY_COLORS[category]
   return (
@@ -55,6 +63,167 @@ function monthIndexFromDate(date: string): number | null {
   if (!match) return null
   const month = Number(match[1])
   return month >= 1 && month <= 12 ? month - 1 : null
+}
+
+function parseTxDate(date: string): number | null {
+  const m = date.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)
+  if (!m) return null
+  const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])
+  return new Date(year, Number(m[2]) - 1, Number(m[1])).getTime()
+}
+
+function formatTickDate(ts: number, includeYear: boolean): string {
+  return new Intl.DateTimeFormat('en-IN', {
+    month: 'short',
+    day: 'numeric',
+    ...(includeYear ? { year: '2-digit' } : {}),
+  }).format(new Date(ts))
+}
+
+type TsCategory = 'room' | 'shop' | 'house'
+type TsPeriod = '1W' | '1M' | '3M' | '6M' | '1Y'
+
+const TS_PERIOD_DAYS: Record<TsPeriod, number> = {
+  '1W': 7,
+  '1M': 30,
+  '3M': 90,
+  '6M': 180,
+  '1Y': 365,
+}
+
+const TS_CATEGORY_LABELS: Record<TsCategory, string> = {
+  room: 'Rooms',
+  shop: 'Shops',
+  house: 'Houses',
+}
+
+const TS_PERIODS: TsPeriod[] = ['1W', '1M', '3M', '6M', '1Y']
+
+type MonthlyEntityReport = {
+  columns: string[]
+  rows: { month: string; amounts: Record<string, number> }[]
+  totals: Record<string, number>
+}
+
+function emptyMonthlyAmounts(columns: string[]): Record<string, number> {
+  return Object.fromEntries(columns.map((column) => [column, 0]))
+}
+
+function buildMonthlyEntityReport(
+  groups: ReportGroup[],
+  includeGroup: (group: ReportGroup) => boolean,
+  sortColumns: (a: string, b: string) => number
+): MonthlyEntityReport {
+  const columns = [...new Set(groups.filter(includeGroup).map((group) => group.label))].sort(sortColumns)
+  const rows = fiscalMonthOrder.map((monthIndex) => ({
+    month: monthNames[monthIndex],
+    amounts: emptyMonthlyAmounts(columns),
+  }))
+  const byMonth = new Map(fiscalMonthOrder.map((monthIndex, index) => [monthIndex, rows[index]]))
+  const totals = emptyMonthlyAmounts(columns)
+
+  for (const group of groups) {
+    if (!includeGroup(group)) continue
+    for (const transaction of group.transactions) {
+      if (transaction.amount <= 0) continue
+      const monthIndex = monthIndexFromDate(transaction.date)
+      if (monthIndex == null) continue
+      const row = byMonth.get(monthIndex)
+      if (!row) continue
+      row.amounts[group.label] += transaction.amount
+      totals[group.label] += transaction.amount
+    }
+  }
+
+  return { columns, rows, totals }
+}
+
+function buildHouseMonthlyReport(groups: ReportGroup[]): MonthlyEntityReport {
+  const columns = ['Neha Mittal House 1', 'Nealabh House 2']
+  const rows = fiscalMonthOrder.map((monthIndex) => ({
+    month: monthNames[monthIndex],
+    amounts: emptyMonthlyAmounts(columns),
+  }))
+  const byMonth = new Map(fiscalMonthOrder.map((monthIndex, index) => [monthIndex, rows[index]]))
+  const totals = emptyMonthlyAmounts(columns)
+
+  for (const group of groups) {
+    if (group.type !== 'house') continue
+    for (const transaction of group.transactions) {
+      if (transaction.amount <= 0) continue
+      const monthIndex = monthIndexFromDate(transaction.date)
+      if (monthIndex == null) continue
+      const row = byMonth.get(monthIndex)
+      if (!row) continue
+      const desc = transaction.description.toLowerCase()
+      const column = desc.includes('neha mittal')
+        ? 'Neha Mittal House 1'
+        : desc.includes('nealabh bhatia')
+          ? 'Nealabh House 2'
+          : null
+      if (!column) continue
+      row.amounts[column] += transaction.amount
+      totals[column] += transaction.amount
+    }
+  }
+
+  return { columns, rows, totals }
+}
+
+function roomColumnSort(a: string, b: string): number {
+  if (a === 'Other Rooms') return 1
+  if (b === 'Other Rooms') return -1
+  const numA = Number(a.match(/Room\s+(\d+)/i)?.[1] ?? Number.MAX_SAFE_INTEGER)
+  const numB = Number(b.match(/Room\s+(\d+)/i)?.[1] ?? Number.MAX_SAFE_INTEGER)
+  return numA - numB || a.localeCompare(b)
+}
+
+function monthlyReportToCsv(report: MonthlyEntityReport): string[][] {
+  const header = ['Month', ...report.columns, 'Total']
+  const dataRows = report.rows.map((row) => {
+    const values = report.columns.map((column) => (row.amounts[column] ?? 0).toFixed(2))
+    const total = report.columns.reduce((sum, column) => sum + (row.amounts[column] ?? 0), 0)
+    return [row.month, ...values, total.toFixed(2)]
+  })
+  const totalRow = [
+    'Total',
+    ...report.columns.map((column) => (report.totals[column] ?? 0).toFixed(2)),
+    report.columns.reduce((sum, column) => sum + (report.totals[column] ?? 0), 0).toFixed(2),
+  ]
+  return [header, ...dataRows, totalRow]
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function MonthlyReportDownload({
+  label,
+  report,
+  filename,
+}: {
+  label: string
+  report: MonthlyEntityReport
+  filename: string
+}) {
+  const handleDownload = useCallback(() => {
+    downloadCsv(filename, monthlyReportToCsv(report))
+  }, [filename, report])
+
+  if (report.columns.length === 0) return null
+
+  return (
+    <button type="button" className="btn-secondary" onClick={handleDownload}>
+      {label}
+    </button>
+  )
 }
 
 function UploadZone({
@@ -113,7 +282,7 @@ function UploadZone({
   )
 }
 
-type TabId = 'upload' | 'mapping' | 'report'
+type TabId = 'upload' | 'mapping' | 'report' | 'graphs'
 
 function MappingTable({
   mapping,
@@ -351,59 +520,29 @@ function ReportView({
   const groups = buildReport(transactions, mapping)
   const displayGroups = groups
 
-  const monthlyReport = useMemo(() => {
-    const rows = fiscalMonthOrder.map((monthIndex) => ({
-      monthIndex,
-      month: monthNames[monthIndex],
-      room: 0,
-      shop: 0,
-      nehaHouse1: 0,
-      nealabhHouse2: 0,
-    }))
-    const byMonth = new Map(rows.map((row) => [row.monthIndex, row]))
-
-    const addPositiveAmount = (
-      date: string,
-      amount: number,
-      key: 'room' | 'shop' | 'nehaHouse1' | 'nealabhHouse2'
-    ) => {
-      if (amount <= 0) return
-      const monthIndex = monthIndexFromDate(date)
-      if (monthIndex == null) return
-      const row = byMonth.get(monthIndex)
-      if (row) row[key] += amount
-    }
-
-    for (const group of displayGroups) {
-      if (group.type !== 'room' && group.type !== 'other_rooms' && group.type !== 'shop' && group.type !== 'house') {
-        continue
-      }
-      for (const tx of group.transactions) {
-        const desc = tx.description.toLowerCase()
-        if (desc.includes('neha mittal')) {
-          addPositiveAmount(tx.date, tx.amount, 'nehaHouse1')
-        } else if (desc.includes('nealabh bhatia')) {
-          addPositiveAmount(tx.date, tx.amount, 'nealabhHouse2')
-        } else if (group.type === 'shop') {
-          addPositiveAmount(tx.date, tx.amount, 'shop')
-        } else if (group.type === 'room' || group.type === 'other_rooms') {
-          addPositiveAmount(tx.date, tx.amount, 'room')
-        }
-      }
-    }
-
-    const totals = rows.reduce(
-      (acc, row) => ({
-        room: acc.room + row.room,
-        shop: acc.shop + row.shop,
-        nehaHouse1: acc.nehaHouse1 + row.nehaHouse1,
-        nealabhHouse2: acc.nealabhHouse2 + row.nealabhHouse2,
-      }),
-      { room: 0, shop: 0, nehaHouse1: 0, nealabhHouse2: 0 }
-    )
-
-    return { rows, totals }
-  }, [displayGroups])
+  const houseMonthlyReport = useMemo(
+    () => buildHouseMonthlyReport(displayGroups),
+    [displayGroups]
+  )
+  const roomsMonthlyReport = useMemo(
+    () =>
+      buildMonthlyEntityReport(
+        displayGroups,
+        (group) => group.type === 'room' || group.type === 'other_rooms',
+        roomColumnSort
+      ),
+    [displayGroups]
+  )
+  const shopsMonthlyReport = useMemo(
+    () =>
+      buildMonthlyEntityReport(
+        displayGroups,
+        (group) => group.type === 'shop',
+        (a, b) => a.localeCompare(b)
+      ),
+    [displayGroups]
+  )
+  const reportDate = new Date().toISOString().slice(0, 10)
 
   const categorySummary = useMemo(() => {
     const defs: { type: ReportGroup['type']; label: string; color: string }[] = [
@@ -442,43 +581,29 @@ function ReportView({
     })
   }, [displayGroups])
 
-  const downloadReport = useCallback(() => {
-    const rows: string[][] = [
-      ['Month', 'Room', 'Shop', 'Neha Mittal House 1', 'Nealabh House 2'],
-      ...monthlyReport.rows.map((row) => [
-        row.month,
-        row.room.toFixed(2),
-        row.shop.toFixed(2),
-        row.nehaHouse1.toFixed(2),
-        row.nealabhHouse2.toFixed(2),
-      ]),
-      [
-        'Total',
-        monthlyReport.totals.room.toFixed(2),
-        monthlyReport.totals.shop.toFixed(2),
-        monthlyReport.totals.nehaHouse1.toFixed(2),
-        monthlyReport.totals.nealabhHouse2.toFixed(2),
-      ],
-    ]
-    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `report-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [monthlyReport])
-
   return (
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
         <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, database-matched <strong>Rooms</strong>, then <strong>Other Rooms</strong>.
       </p>
-      <button type="button" className="btn-primary download-report-btn" onClick={downloadReport}>
-        Download monthly table (CSV)
-      </button>
+      <div className="monthly-report-downloads">
+        <MonthlyReportDownload
+          label="Download houses monthly report (CSV)"
+          report={houseMonthlyReport}
+          filename={`houses-monthly-${reportDate}.csv`}
+        />
+        <MonthlyReportDownload
+          label="Download rooms monthly report (CSV)"
+          report={roomsMonthlyReport}
+          filename={`rooms-monthly-${reportDate}.csv`}
+        />
+        <MonthlyReportDownload
+          label="Download shops monthly report (CSV)"
+          report={shopsMonthlyReport}
+          filename={`shops-monthly-${reportDate}.csv`}
+        />
+      </div>
       <div className="category-summary-grid">
         {categorySummary.map((cat) => (
           <div
@@ -568,6 +693,539 @@ function ReportView({
   )
 }
 
+function RoomIncomeTrendChart({ monthly }: { monthly: { month: string; amount: number }[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const maxAmount = Math.max(...monthly.map((m) => m.amount), 1)
+  const niceMax = Math.pow(10, Math.floor(Math.log10(maxAmount)))
+  const roundedMax = Math.ceil(maxAmount / niceMax) * niceMax
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * roundedMax)
+
+  const width = 800
+  const height = 360
+  const padding = { top: 32, right: 24, bottom: 48, left: 72 }
+  const innerWidth = width - padding.left - padding.right
+  const innerHeight = height - padding.top - padding.bottom
+  const slot = innerWidth / monthly.length
+  const barWidth = slot * 0.6
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="trend-chart"
+      role="img"
+      aria-label="Total room income per fiscal month"
+    >
+      {yTicks.map((tick, i) => {
+        const y = padding.top + innerHeight - (tick / roundedMax) * innerHeight
+        return (
+          <g key={i}>
+            <line
+              x1={padding.left}
+              x2={padding.left + innerWidth}
+              y1={y}
+              y2={y}
+              className="trend-grid"
+            />
+            <text x={padding.left - 10} y={y} className="trend-axis-label trend-y-label">
+              {formatCompactINR(tick)}
+            </text>
+          </g>
+        )
+      })}
+      {monthly.map((entry, i) => {
+        const barHeight = (entry.amount / roundedMax) * innerHeight
+        const x = padding.left + slot * i + (slot - barWidth) / 2
+        const y = padding.top + innerHeight - barHeight
+        const isHovered = hoveredIndex === i
+        const tooltipLabel = formatAmount(entry.amount).replace(/^\+/, '')
+        const tooltipWidth = Math.max(88, tooltipLabel.length * 7.5 + 16)
+        const tooltipX = x + barWidth / 2 - tooltipWidth / 2
+        const tooltipY = Math.max(padding.top + 4, y - 34)
+        return (
+          <g key={entry.month}>
+            <rect
+              x={padding.left + slot * i}
+              y={padding.top}
+              width={slot}
+              height={innerHeight}
+              fill="transparent"
+              className="trend-bar-hit"
+              onMouseEnter={() => setHoveredIndex(i)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            />
+            <rect
+              x={x}
+              y={y}
+              width={barWidth}
+              height={Math.max(barHeight, 0)}
+              rx={4}
+              className={`trend-bar${isHovered ? ' trend-bar-hovered' : ''}`}
+            />
+            {isHovered && (
+              <g className="trend-tooltip" pointerEvents="none">
+                <rect
+                  x={tooltipX}
+                  y={tooltipY}
+                  width={tooltipWidth}
+                  height={24}
+                  rx={4}
+                  className="trend-tooltip-bg"
+                />
+                <text
+                  x={x + barWidth / 2}
+                  y={tooltipY + 16}
+                  className="trend-tooltip-text"
+                >
+                  {tooltipLabel}
+                </text>
+              </g>
+            )}
+            {entry.amount > 0 && (
+              <text x={x + barWidth / 2} y={y - 6} className="trend-bar-label">
+                {formatCompactINR(entry.amount)}
+              </text>
+            )}
+            <text
+              x={x + barWidth / 2}
+              y={padding.top + innerHeight + 20}
+              className="trend-axis-label trend-x-label"
+            >
+              {entry.month.slice(0, 3)}
+            </text>
+          </g>
+        )
+      })}
+      <line
+        x1={padding.left}
+        x2={padding.left + innerWidth}
+        y1={padding.top + innerHeight}
+        y2={padding.top + innerHeight}
+        className="trend-axis"
+      />
+    </svg>
+  )
+}
+
+function roomNumberFromLabel(label: string): string {
+  const m = label.match(/Room\s+(\d+[A-Z]?)/i)
+  return m ? m[1] : '?'
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+function WinnersLosersChart({
+  rooms,
+}: {
+  rooms: { label: string; amount: number }[]
+}) {
+  if (rooms.length === 0) {
+    return <p className="empty-client-note">Not enough room data.</p>
+  }
+
+  const threshold = median(rooms.map((r) => r.amount))
+  const maxAmount = Math.max(...rooms.map((r) => r.amount), 1)
+
+  const width = 820
+  const height = 360
+  const padding = { top: 32, right: 30, bottom: 56, left: 90 }
+  const innerW = width - padding.left - padding.right
+  const innerH = height - padding.top - padding.bottom
+
+  const xScale = (v: number) => padding.left + (v / maxAmount) * innerW
+
+  const winnerY = padding.top + innerH * 0.27
+  const loserY = padding.top + innerH * 0.73
+
+  const minRadius = 10
+  const maxRadius = 26
+  const radiusFor = (amount: number) => {
+    if (maxAmount <= 0) return minRadius
+    return minRadius + (Math.sqrt(amount) / Math.sqrt(maxAmount)) * (maxRadius - minRadius)
+  }
+
+  const jitter = (i: number) => (((i * 173) % 51) - 25)
+
+  const xTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * maxAmount)
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="trend-chart wl-chart"
+      role="img"
+      aria-label="Rooms as dots, sized by revenue, split into Winners and Losers by median revenue"
+    >
+      <text
+        x={padding.left - 14}
+        y={winnerY}
+        className="wl-row-label wl-row-label-winner"
+        textAnchor="end"
+        dominantBaseline="middle"
+      >
+        Winner
+      </text>
+      <text
+        x={padding.left - 14}
+        y={loserY}
+        className="wl-row-label wl-row-label-loser"
+        textAnchor="end"
+        dominantBaseline="middle"
+      >
+        Loser
+      </text>
+
+      <line
+        x1={xScale(threshold)}
+        x2={xScale(threshold)}
+        y1={padding.top}
+        y2={padding.top + innerH}
+        className="wl-threshold-line"
+      />
+      <text
+        x={xScale(threshold)}
+        y={padding.top - 8}
+        className="trend-axis-label trend-x-label"
+      >
+        median {formatCompactINR(threshold)}
+      </text>
+
+      <line
+        x1={padding.left}
+        x2={padding.left + innerW}
+        y1={padding.top + innerH}
+        y2={padding.top + innerH}
+        className="trend-axis"
+      />
+      {xTicks.map((tick, i) => (
+        <g key={i}>
+          <line
+            x1={xScale(tick)}
+            x2={xScale(tick)}
+            y1={padding.top + innerH}
+            y2={padding.top + innerH + 5}
+            className="trend-axis"
+          />
+          <text
+            x={xScale(tick)}
+            y={padding.top + innerH + 20}
+            className="trend-axis-label trend-x-label"
+          >
+            {formatCompactINR(tick)}
+          </text>
+        </g>
+      ))}
+
+      {rooms.map((room, i) => {
+        const isWinner = room.amount > threshold
+        const baseY = isWinner ? winnerY : loserY
+        const y = baseY + jitter(i)
+        const x = xScale(room.amount)
+        const r = radiusFor(room.amount)
+        return (
+          <g key={`${room.label}-${i}`} className="wl-dot-group">
+            <circle
+              cx={x}
+              cy={y}
+              r={r}
+              className={isWinner ? 'wl-dot wl-dot-winner' : 'wl-dot wl-dot-loser'}
+            >
+              <title>{`${room.label} — ${formatAmount(room.amount)}`}</title>
+            </circle>
+            <text
+              x={x}
+              y={y}
+              className="wl-dot-label"
+              textAnchor="middle"
+              dominantBaseline="middle"
+            >
+              {roomNumberFromLabel(room.label)}
+            </text>
+          </g>
+        )
+      })}
+
+      <text
+        x={padding.left + innerW / 2}
+        y={height - 8}
+        className="trend-axis-label"
+        textAnchor="middle"
+      >
+        Revenue (₹)
+      </text>
+    </svg>
+  )
+}
+
+function CategoryTimeSeriesChart({
+  groups,
+  category,
+  period,
+}: {
+  groups: ReportGroup[]
+  category: TsCategory
+  period: TsPeriod
+}) {
+  const series = useMemo(() => {
+    const matchesCategory = (g: ReportGroup) => {
+      if (category === 'room') return g.type === 'room' || g.type === 'other_rooms'
+      if (category === 'shop') return g.type === 'shop'
+      return g.type === 'house'
+    }
+
+    const txs: { time: number; amount: number }[] = []
+    for (const g of groups) {
+      if (!matchesCategory(g)) continue
+      for (const t of g.transactions) {
+        const time = parseTxDate(t.date)
+        if (time == null) continue
+        txs.push({ time, amount: t.amount })
+      }
+    }
+    if (!txs.length) return null
+
+    txs.sort((a, b) => a.time - b.time)
+    const windowEnd = txs[txs.length - 1].time
+    const windowStart = windowEnd - TS_PERIOD_DAYS[period] * 86400000
+    const inWindow = txs.filter((t) => t.time >= windowStart)
+    if (!inWindow.length) return null
+
+    const byDay = new Map<number, number>()
+    for (const t of inWindow) {
+      const d = new Date(t.time)
+      d.setHours(0, 0, 0, 0)
+      const dayTs = d.getTime()
+      byDay.set(dayTs, (byDay.get(dayTs) ?? 0) + t.amount)
+    }
+
+    const days = [...byDay.entries()].sort((a, b) => a[0] - b[0])
+    let running = 0
+    const points = days.map(([time, delta]) => {
+      running += delta
+      return { time, value: running }
+    })
+
+    return { points, windowStart, windowEnd }
+  }, [groups, category, period])
+
+  if (!series) {
+    return (
+      <p className="empty-client-note">
+        No {TS_CATEGORY_LABELS[category].toLowerCase()} transactions in this window.
+      </p>
+    )
+  }
+
+  const { points, windowStart, windowEnd } = series
+  const values = points.map((p) => p.value)
+  const minY = Math.min(0, ...values)
+  const maxY = Math.max(...values, 0)
+  const yRange = maxY - minY || 1
+
+  const width = 800
+  const height = 320
+  const padding = { top: 32, right: 24, bottom: 48, left: 80 }
+  const innerW = width - padding.left - padding.right
+  const innerH = height - padding.top - padding.bottom
+  const xSpan = windowEnd - windowStart || 1
+
+  const xScale = (t: number) => padding.left + ((t - windowStart) / xSpan) * innerW
+  const yScale = (v: number) => padding.top + innerH - ((v - minY) / yRange) * innerH
+
+  const pathD = points
+    .map(
+      (p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.time).toFixed(2)} ${yScale(p.value).toFixed(2)}`
+    )
+    .join(' ')
+
+  const first = points[0]
+  const last = points[points.length - 1]
+  const baselineY = yScale(0)
+  const areaD = `${pathD} L ${xScale(last.time).toFixed(2)} ${baselineY.toFixed(2)} L ${xScale(first.time).toFixed(2)} ${baselineY.toFixed(2)} Z`
+
+  const isUp = last.value >= 0
+  const lineClass = isUp ? 'ts-line-up' : 'ts-line-down'
+
+  const yTicks = [0, 0.5, 1].map((t) => minY + t * yRange)
+  const xTickCount = 5
+  const xTicks = Array.from(
+    { length: xTickCount },
+    (_, i) => windowStart + (xSpan / (xTickCount - 1)) * i
+  )
+  const includeYear = period === '6M' || period === '1Y'
+
+  return (
+    <div className="ts-chart-wrap">
+      <div className="ts-summary">
+        <span className="ts-summary-label">Net change ({period})</span>
+        <span className={`ts-summary-value ${isUp ? 'positive' : 'negative'}`}>
+          {formatAmount(last.value)}
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="ts-chart"
+        role="img"
+        aria-label={`${TS_CATEGORY_LABELS[category]} cumulative net over ${period}`}
+      >
+        {yTicks.map((tick, i) => (
+          <g key={i}>
+            <line
+              x1={padding.left}
+              x2={padding.left + innerW}
+              y1={yScale(tick)}
+              y2={yScale(tick)}
+              className="trend-grid"
+            />
+            <text
+              x={padding.left - 10}
+              y={yScale(tick)}
+              className="trend-axis-label trend-y-label"
+            >
+              {formatCompactINR(tick)}
+            </text>
+          </g>
+        ))}
+        <path d={areaD} className={`ts-area ${lineClass}`} />
+        <path d={pathD} className={`ts-line ${lineClass}`} />
+        {xTicks.map((tick, i) => (
+          <text
+            key={i}
+            x={xScale(tick)}
+            y={padding.top + innerH + 20}
+            className="trend-axis-label trend-x-label"
+          >
+            {formatTickDate(tick, includeYear)}
+          </text>
+        ))}
+        <line
+          x1={padding.left}
+          x2={padding.left + innerW}
+          y1={padding.top + innerH}
+          y2={padding.top + innerH}
+          className="trend-axis"
+        />
+      </svg>
+    </div>
+  )
+}
+
+function TimeSeriesSection({ groups }: { groups: ReportGroup[] }) {
+  const [category, setCategory] = useState<TsCategory>('room')
+  const [period, setPeriod] = useState<TsPeriod>('1M')
+
+  return (
+    <>
+      <div className="ts-controls">
+        <div className="ts-toggle-group" role="tablist">
+          {(['room', 'shop', 'house'] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={`ts-toggle ${category === c ? 'active' : ''}`}
+              onClick={() => setCategory(c)}
+              role="tab"
+              aria-selected={category === c}
+            >
+              {TS_CATEGORY_LABELS[c]}
+            </button>
+          ))}
+        </div>
+        <div className="ts-period-group" role="tablist">
+          {TS_PERIODS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`ts-period ${period === p ? 'active' : ''}`}
+              onClick={() => setPeriod(p)}
+              role="tab"
+              aria-selected={period === p}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+      <CategoryTimeSeriesChart groups={groups} category={category} period={period} />
+    </>
+  )
+}
+
+function GraphsView({
+  transactions,
+  mapping,
+}: {
+  transactions: Transaction[]
+  mapping: RoomShopMapping[]
+}) {
+  const groups = useMemo(() => buildReport(transactions, mapping), [transactions, mapping])
+
+  const monthlyRoomIncome = useMemo(() => {
+    const totals = fiscalMonthOrder.map(() => 0)
+    for (const group of groups) {
+      if (group.type !== 'room' && group.type !== 'other_rooms') continue
+      for (const tx of group.transactions) {
+        if (tx.amount <= 0) continue
+        const monthIndex = monthIndexFromDate(tx.date)
+        if (monthIndex == null) continue
+        const fiscalIdx = fiscalMonthOrder.indexOf(monthIndex)
+        if (fiscalIdx === -1) continue
+        totals[fiscalIdx] += tx.amount
+      }
+    }
+    return fiscalMonthOrder.map((monthIdx, i) => ({
+      month: monthNames[monthIdx],
+      amount: totals[i],
+    }))
+  }, [groups])
+
+  const roomTotals = useMemo(() => {
+    const list = groups
+      .filter((g) => g.type === 'room')
+      .map((g) => ({
+        label: g.label,
+        amount: g.transactions.reduce((s, t) => s + (t.amount > 0 ? t.amount : 0), 0),
+      }))
+
+    const occupiedUnits = new Set(
+      groups
+        .filter((g) => g.type === 'room')
+        .map((g) => g.label.split(':')[0].trim())
+    )
+
+    for (const unit of mapping) {
+      if (unit.type !== 'room') continue
+      if (!occupiedUnits.has(unit.unitName)) {
+        list.push({ label: `${unit.unitName} (vacant)`, amount: 0 })
+      }
+    }
+
+    return list.sort((a, b) => b.amount - a.amount)
+  }, [groups, mapping])
+
+  return (
+    <section className="report-section">
+      <h2>Room income trend</h2>
+      <div className="graph-card">
+        <RoomIncomeTrendChart monthly={monthlyRoomIncome} />
+      </div>
+
+      <h2 className="graph-heading">Winners &amp; losers</h2>
+      <div className="graph-card">
+        <WinnersLosersChart rooms={roomTotals} />
+      </div>
+
+      <h2 className="graph-heading">Net trend</h2>
+      <div className="graph-card">
+        <TimeSeriesSection groups={groups} />
+      </div>
+    </section>
+  )
+}
+
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -635,6 +1293,14 @@ export default function App() {
           disabled={transactions.length === 0}
         >
           Summary report
+        </button>
+        <button
+          type="button"
+          className={tab === 'graphs' ? 'active' : ''}
+          onClick={() => setTab('graphs')}
+          disabled={transactions.length === 0}
+        >
+          Graphs
         </button>
       </nav>
 
@@ -730,6 +1396,10 @@ export default function App() {
 
       {tab === 'report' && transactions.length > 0 && (
         <ReportView transactions={transactions} mapping={mapping} />
+      )}
+
+      {tab === 'graphs' && transactions.length > 0 && (
+        <GraphsView transactions={transactions} mapping={mapping} />
       )}
     </div>
   )
