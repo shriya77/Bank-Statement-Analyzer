@@ -806,18 +806,6 @@ function RoomIncomeTrendChart({ monthly }: { monthly: { month: string; amount: n
   )
 }
 
-function roomNumberFromLabel(label: string): string {
-  const m = label.match(/Room\s+(\d+[A-Z]?)/i)
-  return m ? m[1] : '?'
-}
-
-function median(values: number[]): number {
-  if (!values.length) return 0
-  const sorted = [...values].sort((a, b) => a - b)
-  const mid = Math.floor(sorted.length / 2)
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-}
-
 function WinnersLosersChart({
   rooms,
 }: {
@@ -827,136 +815,61 @@ function WinnersLosersChart({
     return <p className="empty-client-note">Not enough room data.</p>
   }
 
-  const threshold = median(rooms.map((r) => r.amount))
-  const maxAmount = Math.max(...rooms.map((r) => r.amount), 1)
+  const mean = rooms.reduce((s, r) => s + r.amount, 0) / rooms.length
+  const winners = rooms.filter((r) => r.amount >= mean)
+  const losers = rooms.filter((r) => r.amount < mean).reverse()
 
-  const width = 820
-  const height = 360
-  const padding = { top: 32, right: 30, bottom: 56, left: 90 }
-  const innerW = width - padding.left - padding.right
-  const innerH = height - padding.top - padding.bottom
+  const max = Math.max(
+    ...winners.map((w) => w.amount),
+    ...losers.map((l) => l.amount),
+    1
+  )
 
-  const xScale = (v: number) => padding.left + (v / maxAmount) * innerW
-
-  const winnerY = padding.top + innerH * 0.27
-  const loserY = padding.top + innerH * 0.73
-
-  const minRadius = 10
-  const maxRadius = 26
-  const radiusFor = (amount: number) => {
-    if (maxAmount <= 0) return minRadius
-    return minRadius + (Math.sqrt(amount) / Math.sqrt(maxAmount)) * (maxRadius - minRadius)
-  }
-
-  const jitter = (i: number) => (((i * 173) % 51) - 25)
-
-  const xTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * maxAmount)
+  const renderRow = (
+    item: { label: string; amount: number },
+    kind: 'winner' | 'loser'
+  ) => (
+    <div className="wl-row" key={`${kind}-${item.label}`}>
+      <span className="wl-label" title={item.label}>
+        {item.label}
+      </span>
+      <div className="wl-bar-track">
+        <div
+          className={`wl-bar wl-bar-${kind}`}
+          style={{ width: `${Math.max(2, (item.amount / max) * 100)}%` }}
+        />
+      </div>
+      <span className="wl-amount">{formatCompactINR(item.amount)}</span>
+    </div>
+  )
 
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      className="trend-chart wl-chart"
-      role="img"
-      aria-label="Rooms as dots, sized by revenue, split into Winners and Losers by median revenue"
-    >
-      <text
-        x={padding.left - 14}
-        y={winnerY}
-        className="wl-row-label wl-row-label-winner"
-        textAnchor="end"
-        dominantBaseline="middle"
-      >
-        Winner
-      </text>
-      <text
-        x={padding.left - 14}
-        y={loserY}
-        className="wl-row-label wl-row-label-loser"
-        textAnchor="end"
-        dominantBaseline="middle"
-      >
-        Loser
-      </text>
-
-      <line
-        x1={xScale(threshold)}
-        x2={xScale(threshold)}
-        y1={padding.top}
-        y2={padding.top + innerH}
-        className="wl-threshold-line"
-      />
-      <text
-        x={xScale(threshold)}
-        y={padding.top - 8}
-        className="trend-axis-label trend-x-label"
-      >
-        median {formatCompactINR(threshold)}
-      </text>
-
-      <line
-        x1={padding.left}
-        x2={padding.left + innerW}
-        y1={padding.top + innerH}
-        y2={padding.top + innerH}
-        className="trend-axis"
-      />
-      {xTicks.map((tick, i) => (
-        <g key={i}>
-          <line
-            x1={xScale(tick)}
-            x2={xScale(tick)}
-            y1={padding.top + innerH}
-            y2={padding.top + innerH + 5}
-            className="trend-axis"
-          />
-          <text
-            x={xScale(tick)}
-            y={padding.top + innerH + 20}
-            className="trend-axis-label trend-x-label"
-          >
-            {formatCompactINR(tick)}
-          </text>
-        </g>
-      ))}
-
-      {rooms.map((room, i) => {
-        const isWinner = room.amount > threshold
-        const baseY = isWinner ? winnerY : loserY
-        const y = baseY + jitter(i)
-        const x = xScale(room.amount)
-        const r = radiusFor(room.amount)
-        return (
-          <g key={`${room.label}-${i}`} className="wl-dot-group">
-            <circle
-              cx={x}
-              cy={y}
-              r={r}
-              className={isWinner ? 'wl-dot wl-dot-winner' : 'wl-dot wl-dot-loser'}
-            >
-              <title>{`${room.label} — ${formatAmount(room.amount)}`}</title>
-            </circle>
-            <text
-              x={x}
-              y={y}
-              className="wl-dot-label"
-              textAnchor="middle"
-              dominantBaseline="middle"
-            >
-              {roomNumberFromLabel(room.label)}
-            </text>
-          </g>
-        )
-      })}
-
-      <text
-        x={padding.left + innerW / 2}
-        y={height - 8}
-        className="trend-axis-label"
-        textAnchor="middle"
-      >
-        Revenue (₹)
-      </text>
-    </svg>
+    <div className="winners-losers-grid">
+      <div className="wl-col">
+        <h3 className="wl-col-title wl-col-title-winner">
+          Winners <span className="wl-col-meta">at or above mean {formatCompactINR(mean)}</span>
+        </h3>
+        <div className="wl-col-body">
+          {winners.length === 0 ? (
+            <p className="empty-client-note">No rooms above the mean.</p>
+          ) : (
+            winners.map((w) => renderRow(w, 'winner'))
+          )}
+        </div>
+      </div>
+      <div className="wl-col">
+        <h3 className="wl-col-title wl-col-title-loser">
+          Losers <span className="wl-col-meta">below mean {formatCompactINR(mean)}</span>
+        </h3>
+        <div className="wl-col-body">
+          {losers.length === 0 ? (
+            <p className="empty-client-note">No rooms below the mean.</p>
+          ) : (
+            losers.map((l) => renderRow(l, 'loser'))
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
