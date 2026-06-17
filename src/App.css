@@ -715,6 +715,144 @@
   font-family: var(--font-mono);
 }
 
+/* Saved statements */
+.saved-statements {
+  margin: 1.5rem 0;
+}
+
+.saved-statements h2 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
+.saved-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.saved-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.saved-item.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.saved-item-main {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border: none;
+  background: transparent;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.saved-item-main:hover {
+  background: var(--surface-hover);
+}
+
+.saved-item.active .saved-item-main:hover {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+}
+
+.saved-item-name {
+  font-weight: 500;
+}
+
+.saved-item-meta {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.saved-item-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  padding: 0 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.saved-item-delete:hover {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.save-card {
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.save-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 220px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.save-card input {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--text);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.save-btn {
+  margin-bottom: 0;
+}
+
+.current-saved-banner {
+  margin: 1rem 0;
+  padding: 0.65rem 0.95rem;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.current-saved-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 .ts-controls {
   display: flex;
   justify-content: space-between;

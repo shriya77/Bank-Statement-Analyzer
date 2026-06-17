@@ -1226,6 +1226,39 @@ function GraphsView({
   )
 }
 
+type SavedStatement = {
+  id: string
+  name: string
+  savedAt: string
+  transactionCount: number
+  transactions: Transaction[]
+}
+
+const SAVED_STATEMENTS_KEY = 'bank-statement-saved-files'
+
+function loadSavedStatements(): SavedStatement[] {
+  try {
+    const raw = localStorage.getItem(SAVED_STATEMENTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function persistSavedStatements(list: SavedStatement[]): string | null {
+  try {
+    localStorage.setItem(SAVED_STATEMENTS_KEY, JSON.stringify(list))
+    return null
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+      return 'Storage full. Delete an old saved statement and try again.'
+    }
+    return e instanceof Error ? e.message : 'Failed to save'
+  }
+}
+
 export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -1235,21 +1268,64 @@ export default function App() {
   const [mapping, setMapping] = useState<RoomShopMapping[]>(() =>
     loadMappingFromStorage()
   )
+  const [savedStatements, setSavedStatements] = useState<SavedStatement[]>(() =>
+    loadSavedStatements()
+  )
+  const [pendingName, setPendingName] = useState('')
+  const [currentSavedId, setCurrentSavedId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     saveMappingToStorage(mapping)
   }, [mapping])
 
+  useEffect(() => {
+    const err = persistSavedStatements(savedStatements)
+    setSaveError(err)
+  }, [savedStatements])
+
   const handleFile = useCallback(async (file: File) => {
     setError(null)
+    setSaveError(null)
     try {
       const parsed = await parseBankFile(file)
       setTransactions(parsed)
       setSelectedCategory(null)
+      setPendingName(file.name.replace(/\.(csv|xls|xlsx)$/i, ''))
+      setCurrentSavedId(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to parse statement')
       setTransactions([])
     }
+  }, [])
+
+  const handleSaveCurrent = useCallback(() => {
+    const name = pendingName.trim()
+    if (!name || transactions.length === 0) return
+    const entry: SavedStatement = {
+      id: crypto.randomUUID(),
+      name,
+      savedAt: new Date().toISOString(),
+      transactionCount: transactions.length,
+      transactions,
+    }
+    setSavedStatements((prev) => [entry, ...prev])
+    setCurrentSavedId(entry.id)
+    setPendingName('')
+  }, [pendingName, transactions])
+
+  const handleLoadSaved = useCallback((entry: SavedStatement) => {
+    setError(null)
+    setSaveError(null)
+    setTransactions(entry.transactions)
+    setSelectedCategory(null)
+    setCurrentSavedId(entry.id)
+    setPendingName('')
+  }, [])
+
+  const handleDeleteSaved = useCallback((id: string) => {
+    setSavedStatements((prev) => prev.filter((s) => s.id !== id))
+    setCurrentSavedId((prev) => (prev === id ? null : prev))
   }, [])
 
   const categories = Array.from(
@@ -1312,6 +1388,89 @@ export default function App() {
             onDragState={setIsDragging}
           />
           {error && <div className="error-banner">{error}</div>}
+          {saveError && <div className="error-banner">{saveError}</div>}
+
+          {savedStatements.length > 0 && (
+            <section className="saved-statements">
+              <h2>Saved statements</h2>
+              <ul className="saved-list">
+                {savedStatements.map((s) => (
+                  <li
+                    key={s.id}
+                    className={`saved-item ${currentSavedId === s.id ? 'active' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="saved-item-main"
+                      onClick={() => handleLoadSaved(s)}
+                    >
+                      <span className="saved-item-name">{s.name}</span>
+                      <span className="saved-item-meta">
+                        {new Date(s.savedAt).toLocaleDateString()} ·{' '}
+                        {s.transactionCount} transactions
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="saved-item-delete"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (
+                          window.confirm(
+                            `Delete saved statement "${s.name}"? This cannot be undone.`
+                          )
+                        ) {
+                          handleDeleteSaved(s.id)
+                        }
+                      }}
+                      title="Delete saved statement"
+                      aria-label={`Delete ${s.name}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {transactions.length > 0 && currentSavedId == null && (
+            <div className="save-card">
+              <label className="save-card-field">
+                <span>Save this statement as</span>
+                <input
+                  type="text"
+                  value={pendingName}
+                  onChange={(e) => setPendingName(e.target.value)}
+                  placeholder="e.g. HDFC FY 2024-25"
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-primary save-btn"
+                onClick={handleSaveCurrent}
+                disabled={!pendingName.trim()}
+              >
+                Save for later
+              </button>
+            </div>
+          )}
+
+          {currentSavedId != null &&
+            (() => {
+              const current = savedStatements.find((s) => s.id === currentSavedId)
+              if (!current) return null
+              return (
+                <div className="current-saved-banner">
+                  Showing saved statement: <strong>{current.name}</strong>
+                  <span className="current-saved-meta">
+                    {' '}
+                    · saved {new Date(current.savedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              )
+            })()}
+
           {transactions.length > 0 && (
             <div className="results">
               <section className="summary">
