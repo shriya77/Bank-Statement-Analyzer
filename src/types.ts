@@ -293,7 +293,7 @@ function isClientDatabase(value: unknown): value is RoomShopMapping[] {
   )
 }
 
-function mergeWithDefaults(stored: RoomShopMapping[]): RoomShopMapping[] {
+export function mergeWithDefaults(stored: RoomShopMapping[]): RoomShopMapping[] {
   const defaults = defaultClientDatabase()
   const storedById = new Map(stored.map((unit) => [unit.id, unit]))
   const deprecatedSeedIds = new Set([

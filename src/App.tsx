@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Session } from '@supabase/supabase-js'
+import {
+  fetchSavedStatements,
+  saveClientDatabase,
+  seedClientDatabaseIfEmpty,
+  syncSavedStatements,
+  type SavedStatement,
+} from './cloudStore'
+import { LoginScreen } from './LoginScreen'
 import { isStatementFile, parseBankFile } from './parseCsv'
+import { isSupabaseConfigured, supabase } from './supabase'
 import type { ClientHistoryEntry, ClientUnitType, RoomShopMapping, Transaction } from './types'
 import {
   createCustomUnit,
@@ -11,6 +21,9 @@ import {
 } from './types'
 import { buildReport, type ReportGroup } from './reportLogic'
 import './App.css'
+
+const APP_EMAIL = (import.meta.env.VITE_APP_EMAIL as string | undefined)?.trim() ?? ''
+
 
 function formatAmount(amount: number): string {
   const n = new Intl.NumberFormat('en-IN', {
@@ -1139,40 +1152,8 @@ function GraphsView({
   )
 }
 
-type SavedStatement = {
-  id: string
-  name: string
-  savedAt: string
-  transactionCount: number
-  transactions: Transaction[]
-}
-
-const SAVED_STATEMENTS_KEY = 'bank-statement-saved-files'
-
-function loadSavedStatements(): SavedStatement[] {
-  try {
-    const raw = localStorage.getItem(SAVED_STATEMENTS_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function persistSavedStatements(list: SavedStatement[]): string | null {
-  try {
-    localStorage.setItem(SAVED_STATEMENTS_KEY, JSON.stringify(list))
-    return null
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-      return 'Storage full. Delete an old saved statement and try again.'
-    }
-    return e instanceof Error ? e.message : 'Failed to save'
-  }
-}
-
 export default function App() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -1181,21 +1162,170 @@ export default function App() {
   const [mapping, setMapping] = useState<RoomShopMapping[]>(() =>
     loadMappingFromStorage()
   )
-  const [savedStatements, setSavedStatements] = useState<SavedStatement[]>(() =>
-    loadSavedStatements()
-  )
+  const [savedStatements, setSavedStatements] = useState<SavedStatement[]>([])
   const [pendingName, setPendingName] = useState('')
   const [currentSavedId, setCurrentSavedId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [syncStatus, setSyncStatus] = useState<'loading' | 'ready' | 'error'>(
+    isSupabaseConfigured ? 'loading' : 'error'
+  )
+  const cloudReady = useRef(false)
+  const skipMappingSave = useRef(true)
+  const skipStatementsSave = useRef(true)
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setSession(null)
+      return
+    }
+
+    let cancelled = false
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setSession(data.session)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+    })
+
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!session) {
+      cloudReady.current = false
+      setSyncStatus(isSupabaseConfigured ? 'loading' : 'error')
+      return
+    }
+
+    if (!isSupabaseConfigured) {
+      setSaveError(
+        'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env'
+      )
+      setSyncStatus('error')
+      return
+    }
+
+    let cancelled = false
+    setSyncStatus('loading')
+
+    ;(async () => {
+      try {
+        const seeded = await seedClientDatabaseIfEmpty(loadMappingFromStorage())
+        const statements = await fetchSavedStatements()
+        if (cancelled) return
+
+        skipMappingSave.current = true
+        skipStatementsSave.current = true
+        setMapping(seeded)
+        saveMappingToStorage(seeded)
+        setSavedStatements(statements)
+        cloudReady.current = true
+        setSyncStatus('ready')
+        setSaveError(null)
+      } catch (e) {
+        if (cancelled) return
+        cloudReady.current = false
+        setSyncStatus('error')
+        setSaveError(
+          e instanceof Error
+            ? `Cloud sync failed: ${e.message}`
+            : 'Cloud sync failed'
+        )
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [session])
+
+  useEffect(() => {
+    if (!session || !isSupabaseConfigured) return
+
+    const channel = supabase
+      .channel('shared-db')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'client_database' },
+        async () => {
+          try {
+            const remote = await seedClientDatabaseIfEmpty(loadMappingFromStorage())
+            skipMappingSave.current = true
+            setMapping(remote)
+            saveMappingToStorage(remote)
+          } catch {
+            /* ignore transient realtime errors */
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'saved_statements' },
+        async () => {
+          try {
+            const remote = await fetchSavedStatements()
+            skipStatementsSave.current = true
+            setSavedStatements(remote)
+          } catch {
+            /* ignore transient realtime errors */
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [session])
+
+  useEffect(() => {
+    if (!cloudReady.current) return
+    if (skipMappingSave.current) {
+      skipMappingSave.current = false
+      return
+    }
+
     saveMappingToStorage(mapping)
+    void saveClientDatabase(mapping).catch((e) => {
+      setSaveError(
+        e instanceof Error ? `Failed to save mapping: ${e.message}` : 'Failed to save mapping'
+      )
+    })
   }, [mapping])
 
   useEffect(() => {
-    const err = persistSavedStatements(savedStatements)
-    setSaveError(err)
+    if (!cloudReady.current) return
+    if (skipStatementsSave.current) {
+      skipStatementsSave.current = false
+      return
+    }
+
+    void syncSavedStatements(savedStatements).catch((e) => {
+      setSaveError(
+        e instanceof Error
+          ? `Failed to sync statements: ${e.message}`
+          : 'Failed to sync statements'
+      )
+    })
   }, [savedStatements])
+
+  const handleLogout = useCallback(async () => {
+    cloudReady.current = false
+    setSavedStatements([])
+    setTransactions([])
+    setCurrentSavedId(null)
+    setPendingName('')
+    setTab('upload')
+    setSyncStatus('loading')
+    await supabase.auth.signOut()
+  }, [])
 
   const handleFile = useCallback(async (file: File) => {
     setError(null)
@@ -1254,10 +1384,48 @@ export default function App() {
   }, {})
   const total = transactions.reduce((s, t) => s + t.amount, 0)
 
+  if (session === undefined) {
+    return (
+      <div className="login-page">
+        <p className="sync-status" data-status="loading">
+          Checking access…
+        </p>
+      </div>
+    )
+  }
+
+  if (!session) {
+    if (!APP_EMAIL) {
+      return (
+        <div className="login-page">
+          <div className="login-card">
+            <h1>Bank Statement Analyzer</h1>
+            <p className="login-hint">
+              Add <code>VITE_APP_EMAIL</code> to your <code>.env</code> file, then restart the
+              dev server.
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    return <LoginScreen email={APP_EMAIL} />
+  }
+
   return (
     <div className="app">
       <header className="header">
-        <h1>Bank Statement Analyzer</h1>
+        <div className="header-top">
+          <h1>Bank Statement Analyzer</h1>
+          <button type="button" className="btn-secondary logout-btn" onClick={() => void handleLogout()}>
+            Lock
+          </button>
+        </div>
+        <p className="sync-status" data-status={syncStatus}>
+          {syncStatus === 'loading' && 'Connecting to shared database…'}
+          {syncStatus === 'ready' && 'Shared database connected — changes sync for everyone'}
+          {syncStatus === 'error' && 'Shared database unavailable — check .env / Supabase setup'}
+        </p>
       </header>
 
       <nav className="tabs">
