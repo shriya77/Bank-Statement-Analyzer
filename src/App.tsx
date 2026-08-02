@@ -1539,20 +1539,22 @@ export default function App() {
         </p>
       </header>
 
-      <nav className="tabs">
+      <nav className="tabs" aria-label="Main">
         <button
           type="button"
           className={tab === 'upload' ? 'active' : ''}
           onClick={() => setTab('upload')}
         >
-          Upload & Transactions
+          <span className="tab-label-full">Upload & Transactions</span>
+          <span className="tab-label-short">Upload</span>
         </button>
         <button
           type="button"
           className={tab === 'mapping' ? 'active' : ''}
           onClick={() => setTab('mapping')}
         >
-          Client database
+          <span className="tab-label-full">Client database</span>
+          <span className="tab-label-short">Database</span>
         </button>
         <button
           type="button"
@@ -1560,7 +1562,8 @@ export default function App() {
           onClick={() => setTab('report')}
           disabled={transactions.length === 0}
         >
-          Summary report
+          <span className="tab-label-full">Summary report</span>
+          <span className="tab-label-short">Report</span>
         </button>
         <button
           type="button"

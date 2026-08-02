@@ -2,7 +2,7 @@
   --bg: #f3fbf8;
   --bg-glow-sky: #d7f0ff;
   --bg-glow-mint: #c9f5e6;
-  --surface: rgba(255, 255, 255, 0.78);
+  --surface: #ffffff;
   --surface-solid: #ffffff;
   --surface-hover: #eef9f4;
   --border: #b9e0d2;
@@ -47,7 +47,6 @@ body {
     radial-gradient(880px 480px at 96% 4%, var(--bg-glow-mint) 0%, transparent 52%),
     radial-gradient(700px 380px at 50% 110%, #dff7ef 0%, transparent 55%),
     linear-gradient(180deg, #f8fdfb 0%, #eef8f3 48%, #f4faf7 100%);
-  background-attachment: fixed;
 }
 
 #root {
