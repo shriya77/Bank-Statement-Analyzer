@@ -55,24 +55,24 @@ export interface ClientUnit {
 export type RoomShopMapping = ClientUnit
 
 export const CATEGORY_COLORS: Record<Category, string> = {
-  Amma: '#a855f7',
-  Shop: '#f59e0b',
-  House: '#06b6d4',
-  'House Tax': '#f97316',
-  'SKI Towers Maintenance': '#14b8a6',
-  'Electricity Payment': '#eab308',
-  Indu: '#ec4899',
-  'Mutual Fund Purchase': '#0ea5e9',
-  'Mutual Fund Sell': '#38bdf8',
-  Others: '#94a3b8',
-  HDFC: '#2563eb',
-  Interest: '#84cc16',
-  'Income Tax': '#60a5fa',
-  Advertisement: '#f43f5e',
-  Telephone: '#22d3ee',
-  'Bank Charges': '#64748b',
-  Room: '#22c55e',
-  'One Day Room': '#86efac',
+  Amma: '#8b5cf6',
+  Shop: '#d97706',
+  House: '#0891b2',
+  'House Tax': '#ea580c',
+  'SKI Towers Maintenance': '#0d9488',
+  'Electricity Payment': '#ca8a04',
+  Indu: '#db2777',
+  'Mutual Fund Purchase': '#0284c7',
+  'Mutual Fund Sell': '#0ea5e9',
+  Others: '#64748b',
+  HDFC: '#1d4ed8',
+  Interest: '#65a30d',
+  'Income Tax': '#2563eb',
+  Advertisement: '#e11d48',
+  Telephone: '#0891b2',
+  'Bank Charges': '#475569',
+  Room: '#059669',
+  'One Day Room': '#34d399',
 }
 
 const MAPPING_STORAGE_KEY = 'bank-statement-client-database'
@@ -330,11 +330,9 @@ export function sortMapping(mapping: RoomShopMapping[]): RoomShopMapping[] {
   const shops = mapping
     .filter((unit) => unit.type === 'shop')
     .sort((a, b) => unitSortKey(a) - unitSortKey(b))
-    .map((unit) => ({ ...unit, clients: sortClients(unit.clients) }))
   const rooms = mapping
     .filter((unit) => unit.type === 'room')
     .sort((a, b) => unitSortKey(a) - unitSortKey(b))
-    .map((unit) => ({ ...unit, clients: sortClients(unit.clients) }))
   const other = mapping.filter((unit) => unit.type !== 'shop' && unit.type !== 'room')
   return [...shops, ...rooms, ...other]
 }
@@ -378,22 +376,6 @@ export function mergeWithDefaults(stored: RoomShopMapping[]): RoomShopMapping[] 
     'shop-rental',
     ...Array.from({ length: 10 }, (_, i) => `room-${503 + i}`),
   ])
-  const forceUnitRestructureIds = new Set([
-    'shop-1',
-    'shop-2',
-    'shop-3',
-    'shop-4',
-    'shop-5',
-    'room-209',
-    'room-211',
-    'room-212',
-    'room-308',
-    'room-309',
-    'room-401',
-    'room-403',
-    'room-410',
-    'room-411',
-  ])
   const shouldReplaceDeprecatedSeed = (unit: RoomShopMapping) =>
     unit.clients.some((entry) => deprecatedSeedIds.has(entry.id))
 
@@ -401,16 +383,13 @@ export function mergeWithDefaults(stored: RoomShopMapping[]): RoomShopMapping[] 
     const storedUnit = storedById.get(defaultUnit.id)
     if (!storedUnit) return defaultUnit
 
-    if (
-      shouldReplaceDeprecatedSeed(storedUnit) ||
-      forceUnitRestructureIds.has(defaultUnit.id)
-    ) {
+    if (shouldReplaceDeprecatedSeed(storedUnit)) {
       const defaultClientIds = new Set(defaultUnit.clients.map((entry) => entry.id))
       const extras = storedUnit.clients.filter(
         (entry) =>
           !defaultClientIds.has(entry.id) && !deprecatedSeedIds.has(entry.id)
       )
-      return { ...defaultUnit, clients: sortClients([...defaultUnit.clients, ...extras]) }
+      return { ...defaultUnit, clients: [...defaultUnit.clients, ...extras] }
     }
 
     const storedClientIds = new Set(storedUnit.clients.map((entry) => entry.id))
@@ -420,6 +399,8 @@ export function mergeWithDefaults(stored: RoomShopMapping[]): RoomShopMapping[] 
     return {
       ...defaultUnit,
       ...storedUnit,
+      unitName: storedUnit.unitName || defaultUnit.unitName,
+      identifier: storedUnit.identifier || defaultUnit.identifier,
       clients: [...storedUnit.clients, ...missingDefaultClients],
     }
   })

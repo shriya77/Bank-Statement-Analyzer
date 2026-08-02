@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
+  fetchClientDatabase,
   fetchSavedStatements,
   saveClientDatabase,
   seedClientDatabaseIfEmpty,
@@ -352,18 +353,17 @@ function MappingTable({
   const updateClient = useCallback(
     (unitId: string, clientId: string, patch: Partial<ClientHistoryEntry>) => {
       setMapping((prev) =>
-        prev.map((unit) =>
-          unit.id === unitId
-            ? {
-                ...unit,
-                clients: sortClients(
-                  unit.clients.map((client) =>
-                    client.id === clientId ? { ...client, ...patch } : client
-                  )
-                ),
-              }
-            : unit
-        )
+        prev.map((unit) => {
+          if (unit.id !== unitId) return unit
+          const clients = unit.clients.map((client) =>
+            client.id === clientId ? { ...client, ...patch } : client
+          )
+          // Only re-order when status changes — sorting by name while typing steals focus.
+          return {
+            ...unit,
+            clients: 'isEx' in patch ? sortClients(clients) : clients,
+          }
+        })
       )
     },
     [setMapping]
@@ -392,6 +392,18 @@ function MappingTable({
     if (confirmed) setMapping(defaultClientDatabase())
   }, [setMapping])
 
+  const emptyRooms = useMemo(
+    () =>
+      mapping
+        .filter(
+          (unit) =>
+            unit.type === 'room' && !unit.clients.some((client) => !client.isEx)
+        )
+        .slice()
+        .sort((a, b) => unitSortKey(a) - unitSortKey(b)),
+    [mapping]
+  )
+
   const renderUnits = (type: ClientUnitType) => {
     const units = mapping
       .filter((unit) => unit.type === type)
@@ -401,7 +413,6 @@ function MappingTable({
       <div className="client-unit-list">
         {units.map((unit) => {
           const isDefaultUnit = /^(shop|room)-\d+$/.test(unit.id)
-          const clients = sortClients(unit.clients)
           return (
             <article className="client-unit-card" key={unit.id}>
               <div className="client-unit-header">
@@ -430,12 +441,12 @@ function MappingTable({
                 )}
               </div>
 
-              {clients.length === 0 && (
+              {unit.clients.length === 0 && (
                 <p className="empty-client-note">No client saved yet.</p>
               )}
 
               <div className="client-history-list">
-                {clients.map((entry) => (
+                {unit.clients.map((entry) => (
                   <div
                     className={`client-history-row ${entry.isEx ? 'is-ex' : 'is-current'}`}
                     key={entry.id}
@@ -517,6 +528,43 @@ function MappingTable({
         Store the current client and any ex-clients for each shop or room. Add aliases from the
         bank narration so old statements still classify correctly.
       </p>
+
+      <div className="empty-rooms-board" aria-live="polite">
+        <div className="empty-rooms-board-header">
+          <div className="empty-rooms-board-title">
+            <span className="empty-rooms-door" aria-hidden="true" />
+            <div>
+              <h3>Empty rooms</h3>
+              <p>
+                {emptyRooms.length === 0
+                  ? 'Every room has someone home'
+                  : `${emptyRooms.length} waiting for a new guest`}
+              </p>
+            </div>
+          </div>
+          <span className="empty-rooms-count">{emptyRooms.length}</span>
+        </div>
+        {emptyRooms.length === 0 ? (
+          <p className="empty-rooms-all-full">All snug — no vacant rooms right now.</p>
+        ) : (
+          <ul className="empty-rooms-chips">
+            {emptyRooms.map((room, index) => (
+              <li
+                key={room.id}
+                className="empty-room-chip"
+                style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
+                title={room.unitName}
+              >
+                <span className="empty-room-chip-door" aria-hidden="true" />
+                <span className="empty-room-chip-label">
+                  {room.identifier || room.unitName.replace(/^Room\s+/i, '')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       <div className="database-actions">
         <button type="button" className="btn-primary" onClick={() => addUnit('shop')}>
           + Add shop
@@ -1208,6 +1256,9 @@ export default function App() {
   const cloudReady = useRef(false)
   const skipMappingSave = useRef(true)
   const skipStatementsSave = useRef(true)
+  const mappingDirty = useRef(false)
+  const mappingSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ignoreRemoteMappingUntil = useRef(0)
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -1259,6 +1310,7 @@ export default function App() {
 
         skipMappingSave.current = true
         skipStatementsSave.current = true
+        mappingDirty.current = false
         setMapping(seeded)
         saveMappingToStorage(seeded)
         setSavedStatements(statements)
@@ -1291,8 +1343,16 @@ export default function App() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'client_database' },
         async () => {
+          // Don't clobber in-progress typing with our own echo (or another tab while dirty).
+          if (mappingDirty.current || Date.now() < ignoreRemoteMappingUntil.current) return
+          if (document.activeElement?.closest('.mapping-section')) return
           try {
-            const remote = await seedClientDatabaseIfEmpty(loadMappingFromStorage())
+            const remote = await fetchClientDatabase({
+              mergeDefaults: false,
+              persistStructureChanges: false,
+            })
+            if (!remote) return
+            if (mappingDirty.current || Date.now() < ignoreRemoteMappingUntil.current) return
             skipMappingSave.current = true
             setMapping(remote)
             saveMappingToStorage(remote)
@@ -1328,12 +1388,27 @@ export default function App() {
       return
     }
 
+    mappingDirty.current = true
     saveMappingToStorage(mapping)
-    void saveClientDatabase(mapping).catch((e) => {
-      setSaveError(
-        e instanceof Error ? `Failed to save mapping: ${e.message}` : 'Failed to save mapping'
-      )
-    })
+
+    if (mappingSaveTimer.current) clearTimeout(mappingSaveTimer.current)
+    mappingSaveTimer.current = setTimeout(() => {
+      const snapshot = mapping
+      void saveClientDatabase(snapshot)
+        .then(() => {
+          mappingDirty.current = false
+          ignoreRemoteMappingUntil.current = Date.now() + 2000
+        })
+        .catch((e) => {
+          setSaveError(
+            e instanceof Error ? `Failed to save mapping: ${e.message}` : 'Failed to save mapping'
+          )
+        })
+    }, 800)
+
+    return () => {
+      if (mappingSaveTimer.current) clearTimeout(mappingSaveTimer.current)
+    }
   }, [mapping])
 
   useEffect(() => {

@@ -41,10 +41,10 @@ function isClientDatabase(value: unknown): value is RoomShopMapping[] {
   )
 }
 
-function parseMapping(data: unknown): RoomShopMapping[] | null {
+function parseMapping(data: unknown, merge = true): RoomShopMapping[] | null {
   if (!isClientDatabase(data)) return null
   if (data.length === 0) return null
-  return mergeWithDefaults(data)
+  return merge ? mergeWithDefaults(data) : data
 }
 
 function rowToSavedStatement(row: SavedStatementRow): SavedStatement {
@@ -70,7 +70,10 @@ function savedStatementToRow(entry: SavedStatement) {
 }
 
 /** Returns null when the cloud row is empty/unseeded. */
-export async function fetchClientDatabase(): Promise<RoomShopMapping[] | null> {
+export async function fetchClientDatabase(
+  options: { mergeDefaults?: boolean; persistStructureChanges?: boolean } = {}
+): Promise<RoomShopMapping[] | null> {
+  const { mergeDefaults = true, persistStructureChanges = true } = options
   const { data, error } = await supabase
     .from('client_database')
     .select('id, data')
@@ -81,8 +84,10 @@ export async function fetchClientDatabase(): Promise<RoomShopMapping[] | null> {
   if (!data) return null
 
   const raw = (data as ClientDatabaseRow).data
-  const parsed = parseMapping(raw)
+  const parsed = parseMapping(raw, mergeDefaults)
   if (!parsed) return null
+
+  if (!persistStructureChanges || !mergeDefaults) return parsed
 
   // Persist when default rooms were added or deprecated rooms removed.
   const rawIds = new Set(

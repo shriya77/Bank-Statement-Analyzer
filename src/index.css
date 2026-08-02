@@ -1,35 +1,53 @@
 :root {
-  --bg: #0f0f12;
-  --surface: #18181d;
-  --surface-hover: #1f1f26;
-  --border: #2a2a32;
-  --text: #e8e8ed;
-  --text-muted: #8b8b98;
-  --accent: #7c6ef6;
-  --accent-dim: #5c4ed6;
-  --green: #4ade80;
-  --green-dim: #22c55e;
-  --red: #f87171;
-  --red-dim: #ef4444;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --bg: #f3fbf8;
+  --bg-glow-sky: #d7f0ff;
+  --bg-glow-mint: #c9f5e6;
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-solid: #ffffff;
+  --surface-hover: #eef9f4;
+  --border: #b9e0d2;
+  --border-strong: #8fccbb;
+  --text: #173832;
+  --text-muted: #5b7d74;
+  --accent: #0f9f85;
+  --accent-dim: #0b7d69;
+  --accent-soft: #d8f6ec;
+  --green: #0c9a68;
+  --green-dim: #087a52;
+  --red: #de5c5c;
+  --red-dim: #c44747;
+  --shadow-sm: 0 1px 2px rgba(23, 56, 50, 0.04);
+  --shadow: 0 12px 32px rgba(23, 86, 72, 0.08);
+  --shadow-hover: 0 16px 40px rgba(23, 86, 72, 0.12);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Outfit', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  color-scheme: light;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(1000px 520px at 8% -8%, var(--bg-glow-sky) 0%, transparent 58%),
+    radial-gradient(880px 480px at 96% 4%, var(--bg-glow-mint) 0%, transparent 52%),
+    radial-gradient(700px 380px at 50% 110%, #dff7ef 0%, transparent 55%),
+    linear-gradient(180deg, #f8fdfb 0%, #eef8f3 48%, #f4faf7 100%);
+  background-attachment: fixed;
 }
 
 #root {
@@ -41,6 +59,45 @@ button {
   cursor: pointer;
 }
 
-input, select {
+input,
+select,
+textarea {
   font-family: inherit;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, white);
+  color: var(--text);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes soft-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
 }
