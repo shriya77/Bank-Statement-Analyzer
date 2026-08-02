@@ -16,6 +16,7 @@ export type Category =
   | 'Telephone'
   | 'Bank Charges'
   | 'Room'
+  | 'One Day Room'
 
 export interface Transaction {
   id: string
@@ -33,9 +34,12 @@ export interface ClientHistoryEntry {
   name: string
   /** Extra names, UPI handles, or narration fragments that identify this client. */
   aliases: string
-  /** Optional yyyy-mm-dd range so old clients still classify correctly in yearly files. */
-  startDate: string
-  endDate: string
+  /** True for former occupants — still used to classify old statements. */
+  isEx?: boolean
+  /** @deprecated Dates are no longer used; kept for older saved data. */
+  startDate?: string
+  /** @deprecated Dates are no longer used; kept for older saved data. */
+  endDate?: string
 }
 
 export interface ClientUnit {
@@ -68,47 +72,36 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   Telephone: '#22d3ee',
   'Bank Charges': '#64748b',
   Room: '#22c55e',
+  'One Day Room': '#86efac',
 }
 
 const MAPPING_STORAGE_KEY = 'bank-statement-client-database'
 const LEGACY_MAPPING_STORAGE_KEY = 'bank-statement-room-shop-mapping'
 
+function roomRange(start: number, end: number): string[] {
+  return Array.from({ length: end - start + 1 }, (_, i) => String(start + i))
+}
+
+/** Full building inventory: 201–212, 301–311, 401–411, 501–502 */
 const roomNumbers = [
-  '301',
-  '207',
-  '204',
-  '310',
-  '305',
-  '208',
-  '205',
-  '409',
-  '302',
-  '304',
-  '306',
+  ...roomRange(201, 212),
+  ...roomRange(301, 311),
+  ...roomRange(401, 411),
+  '501',
   '502',
-  '203',
-  '211',
-  '303',
-  '410',
-  '212',
-  '405',
-  '403',
-  '308',
-  '210',
-  '407',
-  '209',
-  '201',
-  '406',
-  '411',
 ] as const
 
-function client(id: string, name: string, aliases = name): ClientHistoryEntry {
+function client(
+  id: string,
+  name: string,
+  aliases = name,
+  isEx = false
+): ClientHistoryEntry {
   return {
     id,
     name,
     aliases,
-    startDate: '',
-    endDate: '',
+    isEx,
   }
 }
 
@@ -118,70 +111,64 @@ export function defaultClientDatabase(): RoomShopMapping[] {
       id: 'shop-1',
       type: 'shop',
       unitName: 'Shop 1',
-      identifier: 'shop 1',
+      // 3 combined physical shops (incl. former Nirmala Devi)
+      identifier: 'shop 1\nshop 3',
       clients: [
         client(
           'shop-1-briyanipalayam',
           'BRIYANIPALAYAM',
-          'BRIYANIPALAYAM\nBIRYANIPALAYAM\nBIRYANI PALAYAM\nSRS FOODS\nS R S FOODS\nSHABANA\nSHABANA PARVIN R'
+          'BRIYANIPALAYAM\nBIRYANIPALAYAM\nBIRYANI PALAYAM\nSABEER BAI\nSABEER BAI BIRYANI\nSABEER\nSRS FOODS\nS R S FOODS\nSHABANA\nSHABANA PARVIN R'
         ),
+        client('shop-1-nirmala-devi-ex', 'NIRMALA DEVI', 'NIRMALA DEVI\nWELLDEVI1978', true),
       ],
     },
     {
       id: 'shop-2',
       type: 'shop',
       unitName: 'Shop 2',
-      identifier: 'shop 2',
-      clients: [client('shop-2-123dentistryemerald', '123DENTISTRYEMERALD')],
+      // Dance class — 3 combined shops (Saranya, Mahitha, former Emerald)
+      identifier: 'shop 2\nshop 5\nmahitha',
+      clients: [
+        client('shop-2-saranya', 'SARANYA', 'SARANYA\nDANCE\nDANCE CLASS'),
+        client(
+          'shop-2-mahitha',
+          'Mahitha Midhun',
+          'MAHITHA MIDHUN\nMAHITHA'
+        ),
+        client(
+          'shop-2-emerald-ex',
+          '123DENTISTRYEMERALD',
+          '123DENTISTRYEMERALD\nEMERALD\nDENTISTRY',
+          true
+        ),
+      ],
     },
     {
       id: 'shop-3',
       type: 'shop',
       unitName: 'Shop 3',
-      identifier: 'shop 3',
-      clients: [client('shop-3-nirmala-devi', 'NIRMALA DEVI', 'NIRMALA DEVI\nWELLDEVI1978')],
+      identifier: 'shop 4',
+      clients: [client('shop-3-nathiya', 'NATHIYA', 'NATHIYA')],
     },
     {
       id: 'shop-4',
       type: 'shop',
       unitName: 'Shop 4',
-      identifier: 'shop 4',
-      clients: [client('shop-4-nathiya', 'NATHIYA')],
+      identifier: 'shop 6',
+      clients: [client('shop-4-saridha', 'SARIDHA', 'SARIDHA\nSANSARVA')],
     },
     {
       id: 'shop-5',
       type: 'shop',
       unitName: 'Shop 5',
-      identifier: 'shop 5',
-      clients: [client('shop-5-saranya', 'SARANYA')],
-    },
-    {
-      id: 'shop-6',
-      type: 'shop',
-      unitName: 'Shop 6',
-      identifier: 'shop 6',
-      clients: [client('shop-6-saridha', 'SARIDHA', 'SARIDHA\nSANSARVA')],
-    },
-    {
-      id: 'shop-mahitha',
-      type: 'shop',
-      unitName: 'Shop Mahitha',
-      identifier: 'mahitha',
-      clients: [client('shop-mahitha-midhun', 'Mahitha Midhun', 'MAHITHA MIDHUN\nMAHITHA')],
-    },
-    {
-      id: 'shop-advance',
-      type: 'shop',
-      unitName: 'Shop Advance',
-      identifier: 'shop advance',
-      clients: [client('shop-advance', 'ADVANCE', 'SHOP ADVANCE\nADVANCE')],
-    },
-    {
-      id: 'shop-rental',
-      type: 'shop',
-      unitName: 'Shop Rental',
-      identifier: 'shop rental',
-      clients: [client('shop-rental', 'RENTAL', 'SHOP RENTAL\nRENTAL')],
+      identifier: 'chandrasekar',
+      clients: [
+        client(
+          'shop-5-chandrasekar-divya',
+          'Chandrasekar / Divya',
+          'CHANDRASEKAR\nCHANDRA SEKAR\nDIVYA'
+        ),
+      ],
     },
   ]
 
@@ -226,25 +213,52 @@ export function defaultClientDatabase(): RoomShopMapping[] {
       client('room-203-pugalethi-sorapoji', 'Pugalethi Sorapoji', 'PUGALETHI SORAPOJI\nPUGALENDHISARABOJI'),
     ],
     '211': [
-      client('room-211-a-karunanithi', 'A Karunanithi', 'A KARUNANITHI\nKARUNAMADURAI.2015'),
+      client('room-211-agash', 'Agash', 'AGASH'),
+      client(
+        'room-211-a-karunanithi',
+        'A Karunanithi',
+        'A KARUNANITHI\nKARUNAMADURAI.2015',
+        true
+      ),
     ],
     '303': [
       client('room-303-gobinath-k', 'Gobinath K', 'GOBINATH K'),
     ],
     '410': [
-      client('room-410-punithakumari-ravi', 'Punithakumari Ravi', 'PUNITHAKUMARI RAVI\n12PUNITHAPUNITHA'),
+      client(
+        'room-410-punithakumari-ravi',
+        'Punithakumari Ravi',
+        'PUNITHAKUMARI RAVI\n12PUNITHAPUNITHA',
+        true
+      ),
     ],
     '212': [
-      client('room-212-ashwin-balakumar-sum', 'Ashwin Balakumar Sum', 'ASHWIN BALAKUMAR SUM\nASHWINBSA'),
+      client(
+        'room-212-ashwin-balakumar-sum',
+        'Ashwin Balakumar Sum',
+        'ASHWIN BALAKUMAR SUM\nASHWINBSA',
+        true
+      ),
     ],
     '405': [
       client('room-405-subash-k', 'Subash K', 'SUBASH K\nSUBASHPTJ282'),
     ],
     '403': [
-      client('room-403-gowtham-ak', 'Gowtham Ak', 'GOWTHAM AK\n9360642935'),
+      client('room-403-senthil', 'Senthil', 'SENTHIL'),
+      client('room-403-gowtham-ak', 'Gowtham Ak', 'GOWTHAM AK\n9360642935', true),
     ],
     '308': [
-      client('room-308-suganya-s', 'Suganya S', 'SUGANYA S\nDHANAVASHA'),
+      client(
+        'room-308-suganya-chellapandian',
+        'Suganya Chellapandian',
+        'SUGANYA CHELLAPANDIAN\nSELLAPANDIAN\nCHELLAPANDIAN\nSUGANYA S\nSUGANYA\nDHANAVASHA'
+      ),
+    ],
+    '309': [
+      client('room-309-thukkaram', 'Thukkaram', 'THUKKARAM\nUPI-THUKKARAM'),
+    ],
+    '401': [
+      client('room-401-stephen-raj', 'Stephen Raj', 'STEPHEN RAJ'),
     ],
     '210': [
       client('room-210-k-karthik', 'K Karthik', 'K KARTHIK'),
@@ -253,7 +267,8 @@ export function defaultClientDatabase(): RoomShopMapping[] {
       client('room-407-s-k-arun', 'S K Arun', 'S K ARUN\nARUN99THEBOSS'),
     ],
     '209': [
-      client('room-209-arunachalam', 'Arunachalam', 'ARUNACHALAM\n9486271797'),
+      client('room-209-vijayakumar', 'Vijayakumar', 'VIJAYAKUMAR'),
+      client('room-209-arunachalam', 'Arunachalam', 'ARUNACHALAM\n9486271797', true),
     ],
     '201': [
       client('room-201-baskaran-r', 'Baskaran R', 'BASKARAN R'),
@@ -262,9 +277,20 @@ export function defaultClientDatabase(): RoomShopMapping[] {
       client('room-406-leveil-godson-a', 'Leveil Godson A', 'LEVEIL GODSON A\nGODSONKURUVILA4'),
     ],
     '411': [
-      client('room-411-moosa-fayaz-m-p', 'Moosa Fayaz M P', 'MOOSA FAYAZ M P\nMPMOOSA22'),
-      client('room-411-mr-muhammed-yaseen-k', 'Mr Muhammed Yaseen K', 'MR MUHAMMED YASEEN K\nYASEENYASU'),
-      client('room-411-haseena-mumthas-c', 'Haseena Mumthas C', 'HASEENA MUMTHAS C\nMSAHAD242'),
+      client('room-411-saravanan', 'Saravanan', 'SARAVANAN'),
+      client('room-411-moosa-fayaz-m-p', 'Moosa Fayaz M P', 'MOOSA FAYAZ M P\nMPMOOSA22', true),
+      client(
+        'room-411-mr-muhammed-yaseen-k',
+        'Mr Muhammed Yaseen K',
+        'MR MUHAMMED YASEEN K\nYASEENYASU',
+        true
+      ),
+      client(
+        'room-411-haseena-mumthas-c',
+        'Haseena Mumthas C',
+        'HASEENA MUMTHAS C\nMSAHAD242',
+        true
+      ),
     ],
   }
 
@@ -273,10 +299,44 @@ export function defaultClientDatabase(): RoomShopMapping[] {
     type: 'room' as const,
     unitName: `Room ${room}`,
     identifier: room,
-    clients: initialRoomClients[room] ?? [],
+    clients: sortClients(initialRoomClients[room] ?? []),
   }))
 
   return [...shops, ...rooms]
+}
+
+export function unitSortKey(unit: RoomShopMapping): number {
+  if (unit.type === 'shop') {
+    const fromName = Number(unit.unitName.match(/\d+/)?.[0] ?? NaN)
+    if (!Number.isNaN(fromName)) return fromName
+  }
+  const fromIdentifier = Number(
+    unit.identifier.split(/[\n,]/)[0]?.match(/\d+/)?.[0] ?? NaN
+  )
+  if (!Number.isNaN(fromIdentifier)) return fromIdentifier
+  const fromName = Number(unit.unitName.match(/\d+/)?.[0] ?? NaN)
+  return Number.isNaN(fromName) ? Number.POSITIVE_INFINITY : fromName
+}
+
+export function sortClients(clients: ClientHistoryEntry[]): ClientHistoryEntry[] {
+  return [...clients].sort((a, b) => {
+    const exDiff = Number(!!a.isEx) - Number(!!b.isEx)
+    if (exDiff !== 0) return exDiff
+    return a.name.localeCompare(b.name)
+  })
+}
+
+export function sortMapping(mapping: RoomShopMapping[]): RoomShopMapping[] {
+  const shops = mapping
+    .filter((unit) => unit.type === 'shop')
+    .sort((a, b) => unitSortKey(a) - unitSortKey(b))
+    .map((unit) => ({ ...unit, clients: sortClients(unit.clients) }))
+  const rooms = mapping
+    .filter((unit) => unit.type === 'room')
+    .sort((a, b) => unitSortKey(a) - unitSortKey(b))
+    .map((unit) => ({ ...unit, clients: sortClients(unit.clients) }))
+  const other = mapping.filter((unit) => unit.type !== 'shop' && unit.type !== 'room')
+  return [...shops, ...rooms, ...other]
 }
 
 function isClientDatabase(value: unknown): value is RoomShopMapping[] {
@@ -299,14 +359,60 @@ export function mergeWithDefaults(stored: RoomShopMapping[]): RoomShopMapping[] 
   const deprecatedSeedIds = new Set([
     'shop-5-vishali-mahendran',
     'shop-6-karthikeyan-a',
+    'shop-2-123dentistryemerald',
+    'shop-3-nirmala-devi',
+    'shop-4-nathiya',
+    'shop-5-saranya',
+    'shop-6-saridha',
+    'shop-mahitha-midhun',
+    'room-308-suganya-s',
   ])
-  const deprecatedUnitIds = new Set(['shop-7', 'shop-8', 'shop-9', 'shop-10'])
+  const deprecatedUnitIds = new Set([
+    'shop-6',
+    'shop-7',
+    'shop-8',
+    'shop-9',
+    'shop-10',
+    'shop-mahitha',
+    'shop-advance',
+    'shop-rental',
+    ...Array.from({ length: 10 }, (_, i) => `room-${503 + i}`),
+  ])
+  const forceUnitRestructureIds = new Set([
+    'shop-1',
+    'shop-2',
+    'shop-3',
+    'shop-4',
+    'shop-5',
+    'room-209',
+    'room-211',
+    'room-212',
+    'room-308',
+    'room-309',
+    'room-401',
+    'room-403',
+    'room-410',
+    'room-411',
+  ])
   const shouldReplaceDeprecatedSeed = (unit: RoomShopMapping) =>
     unit.clients.some((entry) => deprecatedSeedIds.has(entry.id))
 
   const merged = defaults.map((defaultUnit) => {
     const storedUnit = storedById.get(defaultUnit.id)
-    if (!storedUnit || shouldReplaceDeprecatedSeed(storedUnit)) return defaultUnit
+    if (!storedUnit) return defaultUnit
+
+    if (
+      shouldReplaceDeprecatedSeed(storedUnit) ||
+      forceUnitRestructureIds.has(defaultUnit.id)
+    ) {
+      const defaultClientIds = new Set(defaultUnit.clients.map((entry) => entry.id))
+      const extras = storedUnit.clients.filter(
+        (entry) =>
+          !defaultClientIds.has(entry.id) && !deprecatedSeedIds.has(entry.id)
+      )
+      return { ...defaultUnit, clients: sortClients([...defaultUnit.clients, ...extras]) }
+    }
+
     const storedClientIds = new Set(storedUnit.clients.map((entry) => entry.id))
     const missingDefaultClients = defaultUnit.clients.filter(
       (entry) => !storedClientIds.has(entry.id)
@@ -319,7 +425,7 @@ export function mergeWithDefaults(stored: RoomShopMapping[]): RoomShopMapping[] 
   })
   const defaultIds = new Set(defaults.map((unit) => unit.id))
   const custom = stored.filter((unit) => !defaultIds.has(unit.id) && !deprecatedUnitIds.has(unit.id))
-  return [...merged, ...custom]
+  return sortMapping([...merged, ...custom])
 }
 
 function migrateLegacyMapping(rows: unknown[]): RoomShopMapping[] {
@@ -389,8 +495,8 @@ export function saveMappingToStorage(mapping: RoomShopMapping[]) {
   localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(mapping))
 }
 
-export function createEmptyClient(): ClientHistoryEntry {
-  return client(crypto.randomUUID(), '', '')
+export function createEmptyClient(isEx = false): ClientHistoryEntry {
+  return client(crypto.randomUUID(), '', '', isEx)
 }
 
 export function createCustomUnit(type: ClientUnitType, nextNumber: number): RoomShopMapping {

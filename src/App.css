@@ -534,9 +534,13 @@
 }
 
 .client-history-row {
-  grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.4fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr) auto;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(160px, 1fr) minmax(220px, 1.4fr) auto;
   padding: 0.75rem 0;
   border-top: 1px solid var(--border);
+}
+
+.client-history-row.is-ex {
+  opacity: 0.85;
 }
 
 .client-unit-card label {
@@ -550,7 +554,8 @@
 }
 
 .client-unit-card input,
-.client-unit-card textarea {
+.client-unit-card textarea,
+.client-unit-card select {
   width: 100%;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--border);
@@ -569,6 +574,12 @@
 
 .client-history-list {
   margin: 0.75rem 0;
+}
+
+.client-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .empty-client-note {

@@ -17,6 +17,8 @@ import {
   defaultClientDatabase,
   loadMappingFromStorage,
   saveMappingToStorage,
+  sortClients,
+  unitSortKey,
   CATEGORY_COLORS,
 } from './types'
 import { buildReport, type ReportGroup } from './reportLogic'
@@ -184,6 +186,8 @@ function buildHouseMonthlyReport(groups: ReportGroup[]): MonthlyEntityReport {
 }
 
 function roomColumnSort(a: string, b: string): number {
+  if (a === 'One Day Rooms') return 1
+  if (b === 'One Day Rooms') return -1
   if (a === 'Other Rooms') return 1
   if (b === 'Other Rooms') return -1
   const numA = Number(a.match(/Room\s+(\d+)/i)?.[1] ?? Number.MAX_SAFE_INTEGER)
@@ -333,11 +337,11 @@ function MappingTable({
   )
 
   const addClient = useCallback(
-    (unitId: string) => {
+    (unitId: string, isEx = false) => {
       setMapping((prev) =>
         prev.map((unit) =>
           unit.id === unitId
-            ? { ...unit, clients: [...unit.clients, createEmptyClient()] }
+            ? { ...unit, clients: sortClients([...unit.clients, createEmptyClient(isEx)]) }
             : unit
         )
       )
@@ -352,8 +356,10 @@ function MappingTable({
           unit.id === unitId
             ? {
                 ...unit,
-                clients: unit.clients.map((client) =>
-                  client.id === clientId ? { ...client, ...patch } : client
+                clients: sortClients(
+                  unit.clients.map((client) =>
+                    client.id === clientId ? { ...client, ...patch } : client
+                  )
                 ),
               }
             : unit
@@ -387,11 +393,15 @@ function MappingTable({
   }, [setMapping])
 
   const renderUnits = (type: ClientUnitType) => {
-    const units = mapping.filter((unit) => unit.type === type)
+    const units = mapping
+      .filter((unit) => unit.type === type)
+      .slice()
+      .sort((a, b) => unitSortKey(a) - unitSortKey(b))
     return (
       <div className="client-unit-list">
         {units.map((unit) => {
           const isDefaultUnit = /^(shop|room)-\d+$/.test(unit.id)
+          const clients = sortClients(unit.clients)
           return (
             <article className="client-unit-card" key={unit.id}>
               <div className="client-unit-header">
@@ -420,20 +430,37 @@ function MappingTable({
                 )}
               </div>
 
-              {unit.clients.length === 0 && (
+              {clients.length === 0 && (
                 <p className="empty-client-note">No client saved yet.</p>
               )}
 
               <div className="client-history-list">
-                {unit.clients.map((client) => (
-                  <div className="client-history-row" key={client.id}>
+                {clients.map((entry) => (
+                  <div
+                    className={`client-history-row ${entry.isEx ? 'is-ex' : 'is-current'}`}
+                    key={entry.id}
+                  >
+                    <label className="client-status-field">
+                      <span>Status</span>
+                      <select
+                        value={entry.isEx ? 'ex' : 'current'}
+                        onChange={(e) =>
+                          updateClient(unit.id, entry.id, {
+                            isEx: e.target.value === 'ex',
+                          })
+                        }
+                      >
+                        <option value="current">Current</option>
+                        <option value="ex">Ex-client</option>
+                      </select>
+                    </label>
                     <label>
                       <span>Client name</span>
                       <input
                         type="text"
-                        value={client.name}
+                        value={entry.name}
                         onChange={(e) =>
-                          updateClient(unit.id, client.id, { name: e.target.value })
+                          updateClient(unit.id, entry.id, { name: e.target.value })
                         }
                         placeholder={type === 'shop' ? 'BRIYANIPALAYAM' : 'Tenant name'}
                       />
@@ -441,48 +468,41 @@ function MappingTable({
                     <label className="client-aliases-field">
                       <span>Aliases / narration matches</span>
                       <textarea
-                        value={client.aliases}
+                        value={entry.aliases}
                         onChange={(e) =>
-                          updateClient(unit.id, client.id, { aliases: e.target.value })
+                          updateClient(unit.id, entry.id, { aliases: e.target.value })
                         }
                         placeholder="One per line: UPI name, business name, old spelling"
                         rows={3}
                       />
                     </label>
-                    <label>
-                      <span>From</span>
-                      <input
-                        type="date"
-                        value={client.startDate}
-                        onChange={(e) =>
-                          updateClient(unit.id, client.id, { startDate: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>To</span>
-                      <input
-                        type="date"
-                        value={client.endDate}
-                        onChange={(e) =>
-                          updateClient(unit.id, client.id, { endDate: e.target.value })
-                        }
-                      />
-                    </label>
                     <button
                       type="button"
                       className="btn-ghost client-remove-btn"
-                      onClick={() => removeClient(unit.id, client.id)}
+                      onClick={() => removeClient(unit.id, entry.id)}
                     >
-                      Remove client
+                      Remove
                     </button>
                   </div>
                 ))}
               </div>
 
-              <button type="button" className="btn-secondary" onClick={() => addClient(unit.id)}>
-                + Add current/old client
-              </button>
+              <div className="client-add-actions">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => addClient(unit.id, false)}
+                >
+                  + Add current client
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => addClient(unit.id, true)}
+                >
+                  + Add ex-client
+                </button>
+              </div>
             </article>
           )
         })}
@@ -494,9 +514,8 @@ function MappingTable({
     <section className="mapping-section">
       <h2>Room / Shop client database</h2>
       <p className="mapping-hint">
-        Store current and old clients here. Add aliases from the bank narration, and use
-        optional from/to dates when a shop or room changes occupants so yearly statements still
-        classify old payments correctly.
+        Store the current client and any ex-clients for each shop or room. Add aliases from the
+        bank narration so old statements still classify correctly.
       </p>
       <div className="database-actions">
         <button type="button" className="btn-primary" onClick={() => addUnit('shop')}>
@@ -541,7 +560,10 @@ function ReportView({
     () =>
       buildMonthlyEntityReport(
         displayGroups,
-        (group) => group.type === 'room' || group.type === 'other_rooms',
+        (group) =>
+          group.type === 'room' ||
+          group.type === 'other_rooms' ||
+          group.type === 'one_day_rooms',
         roomColumnSort
       ),
     [displayGroups]
@@ -576,7 +598,12 @@ function ReportView({
       { type: 'telephone', label: 'Telephone', color: CATEGORY_COLORS.Telephone },
       { type: 'bank_charges', label: 'Bank Charges', color: CATEGORY_COLORS['Bank Charges'] },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
-      { type: 'other_rooms', label: 'Other Rooms', color: CATEGORY_COLORS.Room },
+      {
+        type: 'one_day_rooms',
+        label: 'One Day Rooms',
+        color: CATEGORY_COLORS['One Day Room'],
+      },
+      { type: 'other_rooms', label: 'Other Rooms', color: CATEGORY_COLORS.Others },
     ]
     return defs.map(({ type, label, color }) => {
       const matching = displayGroups.filter((g) => g.type === type)
@@ -598,7 +625,7 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, database-matched <strong>Rooms</strong>, then <strong>Other Rooms</strong>.
+        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, database-matched <strong>Rooms</strong>, then <strong>One Day Rooms</strong> (₹500–₹3,000 from unmatched room-like entries), then <strong>Other Rooms</strong>.
       </p>
       <div className="monthly-report-downloads">
         <MonthlyReportDownload
@@ -666,6 +693,7 @@ function ReportView({
                 {group.type === 'telephone' && 'Telephone · '}
                 {group.type === 'bank_charges' && 'Bank Charges · '}
                 {group.type === 'room' && 'Room · '}
+                {group.type === 'one_day_rooms' && 'One Day Rooms · '}
                 {group.type === 'other_rooms' && 'Other Rooms · '}
                 {group.label}
               </span>
@@ -897,7 +925,10 @@ function CategoryTimeSeriesChart({
 }) {
   const series = useMemo(() => {
     const matchesCategory = (g: ReportGroup) => {
-      if (category === 'room') return g.type === 'room' || g.type === 'other_rooms'
+      if (category === 'room')
+        return (
+          g.type === 'room' || g.type === 'other_rooms' || g.type === 'one_day_rooms'
+        )
       if (category === 'shop') return g.type === 'shop'
       return g.type === 'house'
     }
@@ -1092,7 +1123,12 @@ function GraphsView({
   const monthlyRoomIncome = useMemo(() => {
     const totals = fiscalMonthOrder.map(() => 0)
     for (const group of groups) {
-      if (group.type !== 'room' && group.type !== 'other_rooms') continue
+      if (
+        group.type !== 'room' &&
+        group.type !== 'other_rooms' &&
+        group.type !== 'one_day_rooms'
+      )
+        continue
       for (const tx of group.transactions) {
         if (tx.amount <= 0) continue
         const monthIndex = monthIndexFromDate(tx.date)

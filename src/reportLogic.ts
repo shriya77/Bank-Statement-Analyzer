@@ -11,34 +11,6 @@ function activeDatabase(mapping: RoomShopMapping[]): RoomShopMapping[] {
   return mapping.length > 0 ? mapping : defaultClientDatabase()
 }
 
-function parseStatementDate(date: string): number | null {
-  const slash = date.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)
-  if (slash) {
-    const year = Number(slash[3].length === 2 ? `20${slash[3]}` : slash[3])
-    return new Date(year, Number(slash[2]) - 1, Number(slash[1])).getTime()
-  }
-  const parsed = new Date(date).getTime()
-  return Number.isNaN(parsed) ? null : parsed
-}
-
-function parseInputDate(date: string): number | null {
-  if (!date) return null
-  const parsed = new Date(`${date}T00:00:00`).getTime()
-  return Number.isNaN(parsed) ? null : parsed
-}
-
-function isClientActiveForDate(client: ClientHistoryEntry, transactionDate?: string): boolean {
-  if (!client.startDate && !client.endDate) return true
-  if (!transactionDate) return true
-  const txTime = parseStatementDate(transactionDate)
-  if (txTime == null) return true
-  const start = parseInputDate(client.startDate)
-  const end = parseInputDate(client.endDate)
-  if (start != null && txTime < start) return false
-  if (end != null && txTime > end) return false
-  return true
-}
-
 function clientAliases(client: ClientHistoryEntry): string[] {
   return [client.name, ...client.aliases.split(/[\n,]/)]
     .map((alias) => lower(alias).trim())
@@ -59,35 +31,45 @@ function matchesRoomIdentifier(description: string, roomNumber: string): boolean
 }
 
 function matchesShopIdentifier(description: string, identifier: string): boolean {
-  const id = lower(identifier).trim()
-  return !!id && (description.includes(id) || description.includes(`shop ${id}`) || description.includes(`${id} shop`))
+  return identifier
+    .split(/[\n,]+/)
+    .map((s) => lower(s).trim())
+    .filter(Boolean)
+    .some((id) => {
+      const bare = id.replace(/^shop\s+/, '')
+      return (
+        !!id &&
+        (description.includes(id) ||
+          (!!bare &&
+            bare !== id &&
+            (description.includes(`shop ${bare}`) || description.includes(`${bare} shop`))))
+      )
+    })
+}
+
+function preferredClient(unit: RoomShopMapping): ClientHistoryEntry | null {
+  return unit.clients.find((client) => !client.isEx) ?? unit.clients[0] ?? null
 }
 
 function findClientUnitMatch(
   description: string,
   mapping: RoomShopMapping[],
   type: 'shop' | 'room',
-  transactionDate?: string
+  _transactionDate?: string
 ): ClientUnitMatch | null {
   const d = lower(description)
   for (const unit of activeDatabase(mapping).filter((u) => u.type === type)) {
-    const clientMatch = unit.clients.find(
-      (client) =>
-        isClientActiveForDate(client, transactionDate) &&
-        clientAliases(client).some((alias) => matchesAlias(d, alias))
+    const clientMatch = unit.clients.find((client) =>
+      clientAliases(client).some((alias) => matchesAlias(d, alias))
     )
     if (clientMatch) return { unit, client: clientMatch }
 
     if (type === 'room' && matchesRoomIdentifier(description, unit.identifier)) {
-      const datedClient =
-        unit.clients.find((client) => isClientActiveForDate(client, transactionDate)) ?? null
-      return { unit, client: datedClient }
+      return { unit, client: preferredClient(unit) }
     }
 
     if (type === 'shop' && matchesShopIdentifier(d, unit.identifier)) {
-      const datedClient =
-        unit.clients.find((client) => isClientActiveForDate(client, transactionDate)) ?? null
-      return { unit, client: datedClient }
+      return { unit, client: preferredClient(unit) }
     }
   }
   return null
@@ -350,10 +332,20 @@ export interface ReportGroup {
     | 'telephone'
     | 'bank_charges'
     | 'other_rooms'
+    | 'one_day_rooms'
     | 'room'
   label: string
   transactions: Transaction[]
   total: number
+}
+
+/** Other Rooms amounts in this range are treated as one-day room stays. */
+export const ONE_DAY_ROOM_MIN = 500
+export const ONE_DAY_ROOM_MAX = 3000
+
+export function isOneDayRoomAmount(amount: number): boolean {
+  const abs = Math.abs(amount)
+  return abs >= ONE_DAY_ROOM_MIN && abs <= ONE_DAY_ROOM_MAX
 }
 
 export function buildReport(
@@ -575,12 +567,26 @@ export function buildReport(
   }
 
   if (otherRoomTx.length > 0) {
-    groups.push({
-      type: 'other_rooms',
-      label: 'Other Rooms',
-      transactions: otherRoomTx,
-      total: otherRoomTx.reduce((s, t) => s + t.amount, 0),
-    })
+    const oneDayRoomTx = otherRoomTx.filter((t) => isOneDayRoomAmount(t.amount))
+    const remainingOtherRoomTx = otherRoomTx.filter((t) => !isOneDayRoomAmount(t.amount))
+
+    if (oneDayRoomTx.length > 0) {
+      groups.push({
+        type: 'one_day_rooms',
+        label: 'One Day Rooms',
+        transactions: oneDayRoomTx,
+        total: oneDayRoomTx.reduce((s, t) => s + t.amount, 0),
+      })
+    }
+
+    if (remainingOtherRoomTx.length > 0) {
+      groups.push({
+        type: 'other_rooms',
+        label: 'Other Rooms',
+        transactions: remainingOtherRoomTx,
+        total: remainingOtherRoomTx.reduce((s, t) => s + t.amount, 0),
+      })
+    }
   }
 
   return groups

@@ -79,7 +79,24 @@ export async function fetchClientDatabase(): Promise<RoomShopMapping[] | null> {
 
   if (error) throw new Error(error.message)
   if (!data) return null
-  return parseMapping((data as ClientDatabaseRow).data)
+
+  const raw = (data as ClientDatabaseRow).data
+  const parsed = parseMapping(raw)
+  if (!parsed) return null
+
+  // Persist when default rooms were added or deprecated rooms removed.
+  const rawIds = new Set(
+    isClientDatabase(raw) ? raw.map((unit) => unit.id) : []
+  )
+  const parsedIds = new Set(parsed.map((unit) => unit.id))
+  const changed =
+    parsed.some((unit) => !rawIds.has(unit.id)) ||
+    [...rawIds].some((id) => !parsedIds.has(id))
+  if (changed) {
+    await saveClientDatabase(parsed)
+  }
+
+  return parsed
 }
 
 export async function saveClientDatabase(mapping: RoomShopMapping[]): Promise<void> {
