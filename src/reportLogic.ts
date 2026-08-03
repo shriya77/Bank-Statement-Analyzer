@@ -99,6 +99,7 @@ export type Bucket =
   | 'telephone'
   | 'bank_charges'
   | 'life_insurance'
+  | 'property_tax'
   | 'room'
 
 /** Amma = transactions mentioning Amma or Padmavathi (maintenance is handled first). */
@@ -217,6 +218,12 @@ export function isLifeInsurance(description: string): boolean {
   return d.includes('ebuzzstarhealth') || d.includes('star health')
 }
 
+/** Property tax payments (BBMP / Bangalore commissioner) */
+export function isPropertyTax(description: string): boolean {
+  const d = lower(description)
+  return d.includes('razpcommissionerblre') || d.includes('commissionerblre')
+}
+
 /** Known room tenants that should always stay under Rooms. */
 export function isKnownRoomTenant(description: string): boolean {
   const d = lower(description)
@@ -286,6 +293,7 @@ export function classifyBucket(
   if (isTelephone(description)) return 'telephone'
   if (isBankCharges(description)) return 'bank_charges'
   if (isLifeInsurance(description)) return 'life_insurance'
+  if (isPropertyTax(description)) return 'property_tax'
   if (isOthers(description)) return 'others'
   if (isKnownRoomTenant(description)) return 'room'
   if (isShop(description, mapping)) return 'shop'
@@ -340,6 +348,7 @@ export interface ReportGroup {
     | 'telephone'
     | 'bank_charges'
     | 'life_insurance'
+    | 'property_tax'
     | 'other_rooms'
     | 'one_day_rooms'
     | 'room'
@@ -547,6 +556,19 @@ export function buildReport(
       label: 'Life Insurance',
       transactions: lifeInsuranceTx,
       total: lifeInsuranceTx.reduce((s, t) => s + t.amount, 0),
+    })
+  }
+
+  const propertyTaxTx = transactions.filter(
+    (t) => !assigned.has(t.id) && isPropertyTax(t.description)
+  )
+  if (propertyTaxTx.length > 0) {
+    propertyTaxTx.forEach((t) => assigned.add(t.id))
+    groups.push({
+      type: 'property_tax',
+      label: 'Property Tax',
+      transactions: propertyTaxTx,
+      total: propertyTaxTx.reduce((s, t) => s + t.amount, 0),
     })
   }
 

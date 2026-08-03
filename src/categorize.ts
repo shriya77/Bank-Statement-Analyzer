@@ -38,6 +38,8 @@ export function categorizeDescription(description: string): Category {
       return 'Bank Charges'
     case 'life_insurance':
       return 'Life Insurance'
+    case 'property_tax':
+      return 'Property Tax'
     case 'room':
       return 'Room'
   }

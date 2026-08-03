@@ -16,6 +16,7 @@ export type Category =
   | 'Telephone'
   | 'Bank Charges'
   | 'Life Insurance'
+  | 'Property Tax'
   | 'Room'
   | 'One Day Room'
 
@@ -73,6 +74,7 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   Telephone: '#0891b2',
   'Bank Charges': '#475569',
   'Life Insurance': '#7c3aed',
+  'Property Tax': '#c2410c',
   Room: '#059669',
   'One Day Room': '#34d399',
 }

@@ -646,6 +646,7 @@ function ReportView({
       { type: 'telephone', label: 'Telephone', color: CATEGORY_COLORS.Telephone },
       { type: 'bank_charges', label: 'Bank Charges', color: CATEGORY_COLORS['Bank Charges'] },
       { type: 'life_insurance', label: 'Life Insurance', color: CATEGORY_COLORS['Life Insurance'] },
+      { type: 'property_tax', label: 'Property Tax', color: CATEGORY_COLORS['Property Tax'] },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
       {
         type: 'one_day_rooms',
@@ -679,7 +680,7 @@ function ReportView({
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, <strong>Life Insurance</strong>, database-matched <strong>Rooms</strong>, then <strong>One Day Rooms</strong> (credits ₹500–₹3,000 from unmatched room-like entries), then <strong>Other Rooms</strong> (credits only; unmatched debits go to Others). Click a group header to expand its transactions.
+        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, <strong>Life Insurance</strong>, <strong>Property Tax</strong>, database-matched <strong>Rooms</strong>, then <strong>One Day Rooms</strong> (credits ₹500–₹3,000 from unmatched room-like entries), then <strong>Other Rooms</strong> (credits only; unmatched debits go to Others). Click a group header to expand its transactions.
       </p>
       <div className="monthly-report-downloads">
         <MonthlyReportDownload
@@ -768,6 +769,7 @@ function ReportView({
                 {group.type === 'telephone' && 'Telephone · '}
                 {group.type === 'bank_charges' && 'Bank Charges · '}
                 {group.type === 'life_insurance' && 'Life Insurance · '}
+                {group.type === 'property_tax' && 'Property Tax · '}
                 {group.type === 'room' && 'Room · '}
                 {group.type === 'one_day_rooms' && 'One Day Rooms · '}
                 {group.type === 'other_rooms' && 'Other Rooms · '}
