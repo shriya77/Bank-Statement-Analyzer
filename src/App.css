@@ -898,6 +898,8 @@
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
 }
 
 .report-group-header {
@@ -908,6 +910,23 @@
   padding: 0.8rem 1rem;
   background: linear-gradient(180deg, #f7fcfa 0%, #edf8f3 100%);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, white);
+  cursor: pointer;
+  user-select: none;
+}
+
+.report-group-header:hover {
+  background: linear-gradient(180deg, #f2faf6 0%, #e6f5ef 100%);
+}
+
+.report-group.is-collapsed .report-group-header {
+  border-bottom: none;
+}
+
+.report-group-chevron {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  width: 1rem;
+  flex-shrink: 0;
 }
 
 .report-group-title {

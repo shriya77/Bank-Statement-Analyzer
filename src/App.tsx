@@ -645,6 +645,7 @@ function ReportView({
       { type: 'advertisement', label: 'Advertisement', color: CATEGORY_COLORS.Advertisement },
       { type: 'telephone', label: 'Telephone', color: CATEGORY_COLORS.Telephone },
       { type: 'bank_charges', label: 'Bank Charges', color: CATEGORY_COLORS['Bank Charges'] },
+      { type: 'life_insurance', label: 'Life Insurance', color: CATEGORY_COLORS['Life Insurance'] },
       { type: 'room', label: 'Rooms', color: CATEGORY_COLORS.Room },
       {
         type: 'one_day_rooms',
@@ -669,11 +670,16 @@ function ReportView({
     })
   }, [displayGroups])
 
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }))
+  }, [])
+
   return (
     <section className="report-section">
       <h2>Summary report</h2>
       <p className="report-hint">
-        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, database-matched <strong>Rooms</strong>, then <strong>One Day Rooms</strong> (₹500–₹3,000 from unmatched room-like entries), then <strong>Other Rooms</strong>.
+        <strong>House Tax</strong>, <strong>SKI Towers Maintenance</strong>, <strong>Amma</strong>, <strong>Shops</strong>, <strong>House</strong>, <strong>Electricity</strong>, <strong>Indu</strong>, <strong>Mutual Fund Purchase (O-MF)</strong>, <strong>Mutual Fund Sell (redemption)</strong>, <strong>Others</strong>, <strong>HDFC</strong>, <strong>Interest</strong>, <strong>Income Tax</strong>, <strong>Advertisement</strong>, <strong>Telephone</strong>, <strong>Bank Charges</strong>, <strong>Life Insurance</strong>, database-matched <strong>Rooms</strong>, then <strong>One Day Rooms</strong> (credits ₹500–₹3,000 from unmatched room-like entries), then <strong>Other Rooms</strong> (credits only; unmatched debits go to Others). Click a group header to expand its transactions.
       </p>
       <div className="monthly-report-downloads">
         <MonthlyReportDownload
@@ -720,9 +726,30 @@ function ReportView({
         ))}
       </div>
       <div className="report-groups">
-        {displayGroups.map((group, idx) => (
-          <div key={`${group.type}-${group.label}-${idx}`} className="report-group">
-            <div className="report-group-header">
+        {displayGroups.map((group, idx) => {
+          const groupKey = `${group.type}-${group.label}-${idx}`
+          const isExpanded = !!expandedGroups[groupKey]
+          return (
+          <div
+            key={groupKey}
+            className={`report-group${isExpanded ? '' : ' is-collapsed'}`}
+          >
+            <div
+              className="report-group-header"
+              onClick={() => toggleGroup(groupKey)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isExpanded}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  toggleGroup(groupKey)
+                }
+              }}
+            >
+              <span className="report-group-chevron" aria-hidden="true">
+                {isExpanded ? '▾' : '▸'}
+              </span>
               <span className="report-group-title">
                 {group.type === 'amma' && 'Amma · '}
                 {group.type === 'shop' && 'Shop · '}
@@ -740,6 +767,7 @@ function ReportView({
                 {group.type === 'advertisement' && 'Advertisement · '}
                 {group.type === 'telephone' && 'Telephone · '}
                 {group.type === 'bank_charges' && 'Bank Charges · '}
+                {group.type === 'life_insurance' && 'Life Insurance · '}
                 {group.type === 'room' && 'Room · '}
                 {group.type === 'one_day_rooms' && 'One Day Rooms · '}
                 {group.type === 'other_rooms' && 'Other Rooms · '}
@@ -751,6 +779,7 @@ function ReportView({
                 {formatAmount(group.total)}
               </span>
             </div>
+            {isExpanded && (
             <div className="table-wrap">
               <table className="tx-table">
                 <thead>
@@ -775,8 +804,10 @@ function ReportView({
                 </tbody>
               </table>
             </div>
+            )}
           </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )

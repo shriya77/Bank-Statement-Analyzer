@@ -98,6 +98,7 @@ export type Bucket =
   | 'advertisement'
   | 'telephone'
   | 'bank_charges'
+  | 'life_insurance'
   | 'room'
 
 /** Amma = transactions mentioning Amma or Padmavathi (maintenance is handled first). */
@@ -210,6 +211,12 @@ export function isBankCharges(description: string): boolean {
   return d.includes('depository charges')
 }
 
+/** Life insurance premiums (e.g. Star Health via eBuzz) */
+export function isLifeInsurance(description: string): boolean {
+  const d = lower(description)
+  return d.includes('ebuzzstarhealth') || d.includes('star health')
+}
+
 /** Known room tenants that should always stay under Rooms. */
 export function isKnownRoomTenant(description: string): boolean {
   const d = lower(description)
@@ -278,6 +285,7 @@ export function classifyBucket(
   if (isAdvertisement(description)) return 'advertisement'
   if (isTelephone(description)) return 'telephone'
   if (isBankCharges(description)) return 'bank_charges'
+  if (isLifeInsurance(description)) return 'life_insurance'
   if (isOthers(description)) return 'others'
   if (isKnownRoomTenant(description)) return 'room'
   if (isShop(description, mapping)) return 'shop'
@@ -331,6 +339,7 @@ export interface ReportGroup {
     | 'advertisement'
     | 'telephone'
     | 'bank_charges'
+    | 'life_insurance'
     | 'other_rooms'
     | 'one_day_rooms'
     | 'room'
@@ -528,6 +537,19 @@ export function buildReport(
     })
   }
 
+  const lifeInsuranceTx = transactions.filter(
+    (t) => !assigned.has(t.id) && isLifeInsurance(t.description)
+  )
+  if (lifeInsuranceTx.length > 0) {
+    lifeInsuranceTx.forEach((t) => assigned.add(t.id))
+    groups.push({
+      type: 'life_insurance',
+      label: 'Life Insurance',
+      transactions: lifeInsuranceTx,
+      total: lifeInsuranceTx.reduce((s, t) => s + t.amount, 0),
+    })
+  }
+
   const othersTx = transactions.filter((t) => !assigned.has(t.id) && isOthers(t.description))
   if (othersTx.length > 0) {
     othersTx.forEach((t) => assigned.add(t.id))
@@ -541,11 +563,14 @@ export function buildReport(
 
   const roomByKey: Record<string, { label: string; sortValue: number; tx: Transaction[] }> = {}
   const otherRoomTx: Transaction[] = []
+  const unmatchedDebitTx: Transaction[] = []
   for (const t of transactions) {
     if (assigned.has(t.id)) continue
     const roomMatch = findClientUnitMatch(t.description, mapping, 'room', t.date)
     if (!roomMatch) {
-      otherRoomTx.push(t)
+      // Other Rooms / One Day Rooms are income buckets — never put debits there.
+      if (t.amount > 0) otherRoomTx.push(t)
+      else unmatchedDebitTx.push(t)
       continue
     }
     const key = `${roomMatch.unit.id}:${roomMatch.client?.id ?? 'unassigned'}`
@@ -585,6 +610,21 @@ export function buildReport(
         label: 'Other Rooms',
         transactions: remainingOtherRoomTx,
         total: remainingOtherRoomTx.reduce((s, t) => s + t.amount, 0),
+      })
+    }
+  }
+
+  if (unmatchedDebitTx.length > 0) {
+    const existingOthers = groups.find((g) => g.type === 'others')
+    if (existingOthers) {
+      existingOthers.transactions = [...existingOthers.transactions, ...unmatchedDebitTx]
+      existingOthers.total = existingOthers.transactions.reduce((s, t) => s + t.amount, 0)
+    } else {
+      groups.push({
+        type: 'others',
+        label: 'Others',
+        transactions: unmatchedDebitTx,
+        total: unmatchedDebitTx.reduce((s, t) => s + t.amount, 0),
       })
     }
   }
