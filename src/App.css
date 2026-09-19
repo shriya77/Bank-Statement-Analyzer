@@ -996,6 +996,22 @@
   fill: color-mix(in srgb, #1aad86 72%, white);
 }
 
+.trend-chart-shop .trend-bar {
+  fill: #d97706;
+}
+
+.trend-chart-shop .trend-bar-hovered {
+  fill: color-mix(in srgb, #d97706 72%, white);
+}
+
+.trend-chart-house .trend-bar {
+  fill: #0891b2;
+}
+
+.trend-chart-house .trend-bar-hovered {
+  fill: color-mix(in srgb, #0891b2 72%, white);
+}
+
 .trend-bar-hit {
   cursor: pointer;
 }

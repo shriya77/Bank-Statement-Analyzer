@@ -815,7 +815,17 @@ function ReportView({
   )
 }
 
-function RoomIncomeTrendChart({ monthly }: { monthly: { month: string; amount: number }[] }) {
+type IncomeTrendVariant = 'room' | 'shop' | 'house'
+
+function MonthlyIncomeTrendChart({
+  monthly,
+  variant,
+  ariaLabel,
+}: {
+  monthly: { month: string; amount: number }[]
+  variant: IncomeTrendVariant
+  ariaLabel: string
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const maxAmount = Math.max(...monthly.map((m) => m.amount), 1)
   const niceMax = Math.pow(10, Math.floor(Math.log10(maxAmount)))
@@ -833,9 +843,9 @@ function RoomIncomeTrendChart({ monthly }: { monthly: { month: string; amount: n
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="trend-chart"
+      className={`trend-chart trend-chart-${variant}`}
       role="img"
-      aria-label="Total room income per fiscal month"
+      aria-label={ariaLabel}
     >
       {yTicks.map((tick, i) => {
         const y = padding.top + innerHeight - (tick / roundedMax) * innerHeight
@@ -926,6 +936,28 @@ function RoomIncomeTrendChart({ monthly }: { monthly: { month: string; amount: n
       />
     </svg>
   )
+}
+
+function buildMonthlyCreditIncome(
+  groups: ReportGroup[],
+  includeGroup: (group: ReportGroup) => boolean
+): { month: string; amount: number }[] {
+  const totals = fiscalMonthOrder.map(() => 0)
+  for (const group of groups) {
+    if (!includeGroup(group)) continue
+    for (const tx of group.transactions) {
+      if (tx.amount <= 0) continue
+      const monthIndex = monthIndexFromDate(tx.date)
+      if (monthIndex == null) continue
+      const fiscalIdx = fiscalMonthOrder.indexOf(monthIndex)
+      if (fiscalIdx === -1) continue
+      totals[fiscalIdx] += tx.amount
+    }
+  }
+  return fiscalMonthOrder.map((monthIdx, i) => ({
+    month: monthNames[monthIdx],
+    amount: totals[i],
+  }))
 }
 
 function WinnersLosersChart({
@@ -1201,29 +1233,24 @@ function GraphsView({
 }) {
   const groups = useMemo(() => buildReport(transactions, mapping), [transactions, mapping])
 
-  const monthlyRoomIncome = useMemo(() => {
-    const totals = fiscalMonthOrder.map(() => 0)
-    for (const group of groups) {
-      if (
-        group.type !== 'room' &&
-        group.type !== 'other_rooms' &&
-        group.type !== 'one_day_rooms'
-      )
-        continue
-      for (const tx of group.transactions) {
-        if (tx.amount <= 0) continue
-        const monthIndex = monthIndexFromDate(tx.date)
-        if (monthIndex == null) continue
-        const fiscalIdx = fiscalMonthOrder.indexOf(monthIndex)
-        if (fiscalIdx === -1) continue
-        totals[fiscalIdx] += tx.amount
-      }
-    }
-    return fiscalMonthOrder.map((monthIdx, i) => ({
-      month: monthNames[monthIdx],
-      amount: totals[i],
-    }))
-  }, [groups])
+  const monthlyRoomIncome = useMemo(
+    () =>
+      buildMonthlyCreditIncome(
+        groups,
+        (g) => g.type === 'room' || g.type === 'other_rooms' || g.type === 'one_day_rooms'
+      ),
+    [groups]
+  )
+
+  const monthlyShopIncome = useMemo(
+    () => buildMonthlyCreditIncome(groups, (g) => g.type === 'shop'),
+    [groups]
+  )
+
+  const monthlyHouseIncome = useMemo(
+    () => buildMonthlyCreditIncome(groups, (g) => g.type === 'house'),
+    [groups]
+  )
 
   const roomTotals = useMemo(() => {
     const list = groups
@@ -1253,7 +1280,29 @@ function GraphsView({
     <section className="report-section">
       <h2>Room income trend</h2>
       <div className="graph-card">
-        <RoomIncomeTrendChart monthly={monthlyRoomIncome} />
+        <MonthlyIncomeTrendChart
+          monthly={monthlyRoomIncome}
+          variant="room"
+          ariaLabel="Total room income per fiscal month"
+        />
+      </div>
+
+      <h2 className="graph-heading">Shop income trend</h2>
+      <div className="graph-card">
+        <MonthlyIncomeTrendChart
+          monthly={monthlyShopIncome}
+          variant="shop"
+          ariaLabel="Total shop income per fiscal month"
+        />
+      </div>
+
+      <h2 className="graph-heading">House income trend</h2>
+      <div className="graph-card">
+        <MonthlyIncomeTrendChart
+          monthly={monthlyHouseIncome}
+          variant="house"
+          ariaLabel="Total house income per fiscal month"
+        />
       </div>
 
       <h2 className="graph-heading">Winners &amp; losers</h2>
