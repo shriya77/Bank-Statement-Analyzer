@@ -143,7 +143,7 @@ export function isMutualFundSell(description: string): boolean {
 /** Electricity board payments */
 export function isElectricityPayment(description: string): boolean {
   const d = lower(description)
-  return d.includes('techtangedco') || d.includes('electricity')
+  return d.includes('tangedco') || d.includes('electricity')
 }
 
 /** Miscellaneous transactions that should not be counted as rooms. */
